@@ -45,10 +45,10 @@ public class ChatService {
     private Resource systemPromptResource;
 
     public ChatService(ChatClient.Builder chatClientBuilder, AgentTools agentTools) {
-        // 使用 ChatClient.Builder 构建 ChatClient，注册默认工具
+        // 注意：@Value 注入在构造后才完成，所以这里不能调用 buildSystemPrompt()
+        // 系统提示词将在每次请求时通过 .system() 方法添加
         // ChatClient 会自动处理工具调用循环，通过 ObservingToolCallingManager 捕获中间步骤
         this.chatClient = chatClientBuilder
-                .defaultSystem(buildSystemPrompt())
                 .defaultTools(agentTools)
                 .build();
     }
