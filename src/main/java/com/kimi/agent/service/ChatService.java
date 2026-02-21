@@ -1,5 +1,6 @@
 package com.kimi.agent.service;
 
+import com.kimi.agent.advisor.ThinkingCaptureAdvisor;
 import com.kimi.agent.model.ChatMessage;
 import com.kimi.agent.model.ChatResponse;
 import com.kimi.agent.model.ChatSession;
@@ -16,6 +17,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -36,6 +41,9 @@ public class ChatService {
 
     /** ChatClient 是 Spring AI 推荐的高层抽象 API */
     private final ChatClient chatClient;
+    
+    /** 思考捕获 Advisor */
+    private final ThinkingCaptureAdvisor thinkingCaptureAdvisor;
 
     /** 系统提示词缓存 */
     private String cachedSystemPrompt = null;
@@ -45,11 +53,15 @@ public class ChatService {
     private Resource systemPromptResource;
 
     public ChatService(ChatClient.Builder chatClientBuilder, AgentTools agentTools) {
-        // 使用 ChatClient.Builder 构建 ChatClient，注册默认工具
+        // 创建思考捕获 Advisor
+        this.thinkingCaptureAdvisor = new ThinkingCaptureAdvisor();
+        
+        // 使用 ChatClient.Builder 构建 ChatClient，注册默认工具和 Advisor
         // ChatClient 会自动处理工具调用循环
         this.chatClient = chatClientBuilder
                 .defaultSystem(buildSystemPrompt())
                 .defaultTools(agentTools)
+                .defaultAdvisors(thinkingCaptureAdvisor)
                 .build();
     }
 
@@ -78,25 +90,67 @@ public class ChatService {
             // 构建对话历史
             String chatHistory = buildChatHistory(session);
 
-            // 使用 ChatClient 进行对话
-            // ChatClient 会自动检测模型是否需要调用工具，并执行工具调用循环
-            String content = chatClient.prompt()
-                    .system(buildSystemPrompt() + "\n\n历史对话上下文：\n" + chatHistory)
-                    .user(userMessage)
-                    .call()
-                    .content();
+            // 创建队列来接收中间步骤
+            BlockingQueue<ThinkingCaptureAdvisor.IntermediateStep> stepQueue = new LinkedBlockingQueue<>();
+            
+            // 注册回调来接收中间步骤
+            thinkingCaptureAdvisor.registerCallback(sessionId, step -> {
+                stepQueue.offer(step);
+                // 立即发送给前端
+                sendStepToFrontend(step, sessionId, responseConsumer);
+            });
 
-            logger.info("模型响应: {}", content);
+            try {
+                // 创建 advisor 上下文，传递会话ID
+                Map<String, Object> advisorContext = new HashMap<>();
+                advisorContext.put("sessionId", sessionId);
 
-            // 将模型响应添加到会话
-            session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
+                // 使用 ChatClient 进行对话
+                // ChatClient 会自动检测模型是否需要调用工具，并执行工具调用循环
+                String content = chatClient.prompt()
+                        .system(buildSystemPrompt() + "\n\n历史对话上下文：\n" + chatHistory)
+                        .user(userMessage)
+                        .advisors(advisor -> advisor.param("sessionId", sessionId))
+                        .call()
+                        .content();
 
-            // 解析响应，分离思考过程和最终答案
-            parseAndSendResponse(content, sessionId, responseConsumer);
+                logger.info("模型响应: {}", content);
+
+                // 将模型响应添加到会话
+                session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
+
+                // 解析响应，分离思考过程和最终答案
+                parseAndSendResponse(content, sessionId, responseConsumer);
+
+            } finally {
+                // 注销回调
+                thinkingCaptureAdvisor.unregisterCallback(sessionId);
+            }
 
         } catch (Exception e) {
             logger.error("处理消息时发生错误", e);
             responseConsumer.accept(ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
+        }
+    }
+
+    /**
+     * 发送步骤到前端
+     * 
+     * @param step 中间步骤
+     * @param sessionId 会话ID
+     * @param responseConsumer 响应消费者
+     */
+    private void sendStepToFrontend(ThinkingCaptureAdvisor.IntermediateStep step, String sessionId, 
+                                     Consumer<ChatResponse> responseConsumer) {
+        switch (step.getType()) {
+            case THINKING:
+                // 思考内容
+                responseConsumer.accept(ChatResponse.thinking(step.getContent(), sessionId));
+                break;
+            case TOOL_CALL:
+                // 工具调用
+                responseConsumer.accept(ChatResponse.toolCall(step.getToolName(), sessionId));
+                break;
         }
     }
 
