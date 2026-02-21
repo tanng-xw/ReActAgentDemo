@@ -17,10 +17,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -90,37 +87,48 @@ public class ChatService {
             // 构建对话历史
             String chatHistory = buildChatHistory(session);
 
-            // 创建队列来接收中间步骤
-            BlockingQueue<ThinkingCaptureAdvisor.IntermediateStep> stepQueue = new LinkedBlockingQueue<>();
-            
             // 注册回调来接收中间步骤
             thinkingCaptureAdvisor.registerCallback(sessionId, step -> {
-                stepQueue.offer(step);
                 // 立即发送给前端
                 sendStepToFrontend(step, sessionId, responseConsumer);
             });
 
             try {
-                // 创建 advisor 上下文，传递会话ID
-                Map<String, Object> advisorContext = new HashMap<>();
-                advisorContext.put("sessionId", sessionId);
-
-                // 使用 ChatClient 进行对话
-                // ChatClient 会自动检测模型是否需要调用工具，并执行工具调用循环
-                String content = chatClient.prompt()
+                // 使用 ChatClient 进行流式对话
+                // 收集所有内容块
+                StringBuilder fullContent = new StringBuilder();
+                
+                chatClient.prompt()
                         .system(buildSystemPrompt() + "\n\n历史对话上下文：\n" + chatHistory)
                         .user(userMessage)
                         .advisors(advisor -> advisor.param("sessionId", sessionId))
-                        .call()
-                        .content();
-
-                logger.info("模型响应: {}", content);
-
-                // 将模型响应添加到会话
-                session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
-
-                // 解析响应，分离思考过程和最终答案
-                parseAndSendResponse(content, sessionId, responseConsumer);
+                        .stream()
+                        .chatResponse()
+                        .doOnNext(chatResponse -> {
+                            // 处理每个响应
+                            if (chatResponse.getResult() != null && chatResponse.getResult().getOutput() != null) {
+                                String content = chatResponse.getResult().getOutput().getText();
+                                if (content != null) {
+                                    fullContent.append(content);
+                                }
+                            }
+                        })
+                        .doOnError(error -> {
+                            logger.error("流式处理出错", error);
+                            responseConsumer.accept(ChatResponse.error("处理出错: " + error.getMessage(), sessionId));
+                        })
+                        .doOnComplete(() -> {
+                            // 流完成后的处理
+                            String finalContent = fullContent.toString();
+                            logger.info("流式响应完成，内容: {}", finalContent);
+                            
+                            // 将模型响应添加到会话
+                            session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, finalContent));
+                            
+                            // 解析响应，分离思考过程和最终答案
+                            parseAndSendResponse(finalContent, sessionId, responseConsumer);
+                        })
+                        .blockLast(); // 等待流完成
 
             } finally {
                 // 注销回调
