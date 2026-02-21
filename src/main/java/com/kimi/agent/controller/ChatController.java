@@ -63,14 +63,17 @@ public class ChatController {
         // 异步处理消息
         new Thread(() -> {
             try {
+                logger.info("开始处理流式消息，会话ID: {}", finalSessionId);
                 chatService.processMessage(request.getMessage(), finalSessionId, response -> {
                     try {
+                        logger.info("发送SSE消息 - 会话: {}, 类型: {}", finalSessionId, response.getType());
                         emitter.send(SseEmitter.event()
                                 .name("message")
                                 .data(response));
                         
                         // 如果是最终答案或错误，完成连接
                         if (response.isDone()) {
+                            logger.info("SSE连接完成，会话ID: {}", finalSessionId);
                             emitter.complete();
                         }
                     } catch (IOException e) {

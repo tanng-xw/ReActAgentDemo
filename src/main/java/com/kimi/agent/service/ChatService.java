@@ -142,13 +142,16 @@ public class ChatService {
      */
     private void sendStepToFrontend(ThinkingCaptureAdvisor.IntermediateStep step, String sessionId, 
                                      Consumer<ChatResponse> responseConsumer) {
+        logger.info("发送步骤到前端 - 会话: {}, 类型: {}", sessionId, step.getType());
         switch (step.getType()) {
             case THINKING:
                 // 思考内容
+                logger.info("发送思考内容: {}", step.getContent());
                 responseConsumer.accept(ChatResponse.thinking(step.getContent(), sessionId));
                 break;
             case TOOL_CALL:
                 // 工具调用
+                logger.info("发送工具调用: {}", step.getToolName());
                 responseConsumer.accept(ChatResponse.toolCall(step.getToolName(), sessionId));
                 break;
         }
