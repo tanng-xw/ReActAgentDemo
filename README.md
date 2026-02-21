@@ -14,7 +14,7 @@
 
 ## 技术栈
 
-- **后端**：Java 21、Spring Boot 3.2.0、Spring AI 0.8.0
+- **后端**：Java 21、Spring Boot 3.2.0、Spring AI 1.1.2
 - **前端**：HTML5、CSS3、JavaScript (原生)
 - **构建工具**：Maven
 
