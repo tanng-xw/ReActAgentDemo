@@ -1,6 +1,5 @@
 package com.kimi.agent.service;
 
-import com.kimi.agent.advisor.ThinkingCaptureAdvisor;
 import com.kimi.agent.model.ChatMessage;
 import com.kimi.agent.model.ChatResponse;
 import com.kimi.agent.model.ChatSession;
@@ -8,7 +7,17 @@ import com.kimi.agent.tools.AgentTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -17,14 +26,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
  * 聊天服务类
- * 使用 ChatClient 高层抽象 API 处理用户输入
- * ChatClient 自动处理工具调用循环
+ * 使用 ChatClient 和 ToolCallingManager 处理用户输入，捕获中间步骤
  * 
  * @author Kimi
  */
@@ -39,8 +48,11 @@ public class ChatService {
     /** ChatClient 是 Spring AI 推荐的高层抽象 API */
     private final ChatClient chatClient;
     
-    /** 思考捕获 Advisor */
-    private final ThinkingCaptureAdvisor thinkingCaptureAdvisor;
+    /** ToolCallingManager 用于管理工具调用 */
+    private final ToolCallingManager toolCallingManager;
+    
+    /** Agent 工具 */
+    private final AgentTools agentTools;
 
     /** 系统提示词缓存 */
     private String cachedSystemPrompt = null;
@@ -49,21 +61,18 @@ public class ChatService {
     @Value("classpath:/prompts/system-prompt.st")
     private Resource systemPromptResource;
 
-    public ChatService(ChatClient.Builder chatClientBuilder, AgentTools agentTools) {
-        // 创建思考捕获 Advisor
-        this.thinkingCaptureAdvisor = new ThinkingCaptureAdvisor();
-        
-        // 使用 ChatClient.Builder 构建 ChatClient，注册默认工具和 Advisor
-        // ChatClient 会自动处理工具调用循环
+    public ChatService(ChatClient.Builder chatClientBuilder, ToolCallingManager toolCallingManager, AgentTools agentTools) {
+        this.toolCallingManager = toolCallingManager;
+        this.agentTools = agentTools;
+        // 使用 ChatClient.Builder 构建 ChatClient，**不**注册默认工具（使用 ToolCallingManager 手动管理）
         this.chatClient = chatClientBuilder
                 .defaultSystem(buildSystemPrompt())
-                .defaultTools(agentTools)
-                .defaultAdvisors(thinkingCaptureAdvisor)
                 .build();
     }
 
     /**
      * 处理用户消息，支持流式响应
+     * 使用 ToolCallingManager 手动处理工具调用循环，捕获所有中间步骤
      * 
      * @param userMessage 用户消息
      * @param sessionId 会话ID
@@ -84,55 +93,84 @@ public class ChatService {
             // 发送初始思考提示
             responseConsumer.accept(ChatResponse.thinking("正在思考问题...", sessionId));
 
-            // 构建对话历史
-            String chatHistory = buildChatHistory(session);
-
-            // 注册回调来接收中间步骤
-            thinkingCaptureAdvisor.registerCallback(sessionId, step -> {
-                // 立即发送给前端
-                sendStepToFrontend(step, sessionId, responseConsumer);
-            });
-
-            try {
-                // 使用 ChatClient 进行流式对话
-                // 收集所有内容块
-                StringBuilder fullContent = new StringBuilder();
+            // 构建消息列表
+            List<Message> messages = buildMessages(session, userMessage);
+            
+            // 获取工具回调
+            List<ToolCallback> toolCallbacks = getToolCallbacks();
+            
+            // 创建工具调用选项
+            ToolCallingChatOptions toolOptions = ToolCallingChatOptions.builder()
+                    .toolCallbacks(toolCallbacks)
+                    .build();
+            
+            // 最大工具调用轮数，防止无限循环
+            int maxToolCalls = 5;
+            int toolCallCount = 0;
+            
+            while (toolCallCount < maxToolCalls) {
+                // 创建提示
+                Prompt prompt = new Prompt(messages, toolOptions);
                 
-                chatClient.prompt()
-                        .system(buildSystemPrompt() + "\n\n历史对话上下文：\n" + chatHistory)
-                        .user(userMessage)
-                        .advisors(advisor -> advisor.param("sessionId", sessionId))
-                        .stream()
-                        .chatResponse()
-                        .doOnNext(chatResponse -> {
-                            // 处理每个响应
-                            if (chatResponse.getResult() != null && chatResponse.getResult().getOutput() != null) {
-                                String content = chatResponse.getResult().getOutput().getText();
-                                if (content != null) {
-                                    fullContent.append(content);
-                                }
-                            }
-                        })
-                        .doOnError(error -> {
-                            logger.error("流式处理出错", error);
-                            responseConsumer.accept(ChatResponse.error("处理出错: " + error.getMessage(), sessionId));
-                        })
-                        .doOnComplete(() -> {
-                            // 流完成后的处理
-                            String finalContent = fullContent.toString();
-                            logger.info("流式响应完成，内容: {}", finalContent);
-                            
-                            // 将模型响应添加到会话
-                            session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, finalContent));
-                            
-                            // 解析响应，分离思考过程和最终答案
-                            parseAndSendResponse(finalContent, sessionId, responseConsumer);
-                        })
-                        .blockLast(); // 等待流完成
+                // 调用模型
+                org.springframework.ai.chat.model.ChatResponse chatResponse = chatClient.prompt(prompt).call().chatResponse();
+                
+                if (chatResponse == null || chatResponse.getResult() == null) {
+                    logger.error("模型返回空响应");
+                    responseConsumer.accept(ChatResponse.error("模型返回空响应", sessionId));
+                    return;
+                }
 
-            } finally {
-                // 注销回调
-                thinkingCaptureAdvisor.unregisterCallback(sessionId);
+                org.springframework.ai.chat.model.Generation generation = chatResponse.getResult();
+                AssistantMessage assistantMessage = (AssistantMessage) generation.getOutput();
+                
+                // 获取模型回复内容
+                String content = assistantMessage.getText();
+                logger.info("模型响应 (轮次 {}): {}", toolCallCount, content);
+                
+                // 检查是否有工具调用
+                if (assistantMessage.hasToolCalls()) {
+                    // 这是带有工具调用的思考过程
+                    logger.info("检测到工具调用，数量: {}", assistantMessage.getToolCalls().size());
+                    
+                    // 发送思考内容到前端
+                    if (content != null && !content.isEmpty()) {
+                        responseConsumer.accept(ChatResponse.thinking(content, sessionId));
+                    }
+                    
+                    // 发送工具调用信息到前端
+                    for (AssistantMessage.ToolCall toolCall : assistantMessage.getToolCalls()) {
+                        String toolName = toolCall.name();
+                        logger.info("准备执行工具: {}", toolName);
+                        responseConsumer.accept(ChatResponse.toolCall(toolName, sessionId));
+                    }
+                    
+                    // 使用 ToolCallingManager 执行工具调用
+                    ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, chatResponse);
+                    
+                    logger.info("工具执行完成，返回对话历史消息数: {}", 
+                            toolExecutionResult.conversationHistory().size());
+                    
+                    // 从 ToolExecutionResult 获取更新后的对话历史
+                    messages = toolExecutionResult.conversationHistory();
+                    
+                    toolCallCount++;
+                } else {
+                    // 没有工具调用，这是最终答案
+                    logger.info("收到最终答案");
+                    
+                    // 添加助手消息到会话历史
+                    session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
+                    
+                    // 处理最终答案
+                    parseAndSendResponse(content, sessionId, responseConsumer);
+                    break;
+                }
+            }
+
+            if (toolCallCount >= maxToolCalls) {
+                logger.warn("达到最大工具调用次数限制");
+                responseConsumer.accept(ChatResponse.error("处理时间过长，请重试", sessionId));
             }
 
         } catch (Exception e) {
@@ -142,27 +180,45 @@ public class ChatService {
     }
 
     /**
-     * 发送步骤到前端
+     * 获取工具回调列表
      * 
-     * @param step 中间步骤
-     * @param sessionId 会话ID
-     * @param responseConsumer 响应消费者
+     * @return 工具回调列表
      */
-    private void sendStepToFrontend(ThinkingCaptureAdvisor.IntermediateStep step, String sessionId, 
-                                     Consumer<ChatResponse> responseConsumer) {
-        logger.info("发送步骤到前端 - 会话: {}, 类型: {}", sessionId, step.getType());
-        switch (step.getType()) {
-            case THINKING:
-                // 思考内容
-                logger.info("发送思考内容: {}", step.getContent());
-                responseConsumer.accept(ChatResponse.thinking(step.getContent(), sessionId));
-                break;
-            case TOOL_CALL:
-                // 工具调用
-                logger.info("发送工具调用: {}", step.getToolName());
-                responseConsumer.accept(ChatResponse.toolCall(step.getToolName(), sessionId));
-                break;
+    private List<ToolCallback> getToolCallbacks() {
+        List<ToolCallback> callbacks = new ArrayList<>();
+        // 通过 Spring AI 的工具解析机制获取工具回调
+        // 这里我们依赖 ToolCallingManager 从 Spring 上下文中解析工具
+        return callbacks;
+    }
+
+    /**
+     * 构建消息列表
+     * 
+     * @param session 会话
+     * @param userMessage 用户消息
+     * @return 消息列表
+     */
+    private List<Message> buildMessages(ChatSession session, String userMessage) {
+        List<Message> messages = new ArrayList<>();
+        
+        // 添加历史对话
+        for (ChatMessage msg : session.getMessages()) {
+            switch (msg.getType()) {
+                case USER:
+                    messages.add(new UserMessage(msg.getContent()));
+                    break;
+                case ASSISTANT:
+                    messages.add(new AssistantMessage(msg.getContent()));
+                    break;
+                default:
+                    break;
+            }
         }
+        
+        // 添加当前用户消息
+        messages.add(new UserMessage(userMessage));
+        
+        return messages;
     }
 
     /**
@@ -198,32 +254,6 @@ public class ChatService {
             // 没有标记，将整个内容作为最终答案
             responseConsumer.accept(ChatResponse.finalAnswer(content, sessionId));
         }
-    }
-
-    /**
-     * 构建对话历史
-     * 
-     * @param session 会话
-     * @return 对话历史字符串
-     */
-    private String buildChatHistory(ChatSession session) {
-        StringBuilder sb = new StringBuilder();
-        for (ChatMessage msg : session.getMessages()) {
-            switch (msg.getType()) {
-                case USER:
-                    sb.append("用户：").append(msg.getContent()).append("\n");
-                    break;
-                case ASSISTANT:
-                    sb.append("助手：").append(msg.getContent()).append("\n");
-                    break;
-                case TOOL_CALL:
-                    sb.append("工具结果：").append(msg.getContent()).append("\n");
-                    break;
-                default:
-                    break;
-            }
-        }
-        return sb.toString();
     }
 
     /**
