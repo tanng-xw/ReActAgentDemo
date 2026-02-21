@@ -17,7 +17,7 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.resolution.ToolCallbackResolver;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -51,9 +51,6 @@ public class ChatService {
     /** ToolCallingManager 用于管理工具调用 */
     private final ToolCallingManager toolCallingManager;
     
-    /** ToolCallbackResolver 用于解析工具回调 */
-    private final ToolCallbackResolver toolCallbackResolver;
-    
     /** Agent 工具 */
     private final AgentTools agentTools;
 
@@ -65,9 +62,8 @@ public class ChatService {
     private Resource systemPromptResource;
 
     public ChatService(ChatClient.Builder chatClientBuilder, ToolCallingManager toolCallingManager, 
-                       ToolCallbackResolver toolCallbackResolver, AgentTools agentTools) {
+                       AgentTools agentTools) {
         this.toolCallingManager = toolCallingManager;
-        this.toolCallbackResolver = toolCallbackResolver;
         this.agentTools = agentTools;
         
         // 注意：@Value 注入在构造后才完成，所以这里不能调用 buildSystemPrompt()
@@ -187,26 +183,20 @@ public class ChatService {
 
     /**
      * 获取工具回调列表
+     * 使用 ToolCallbacks.from() 将 @Tool 注解的方法转换为 ToolCallback
      * 
      * @return 工具回调列表
      */
     private List<ToolCallback> getToolCallbacks() {
-        // 通过 ToolCallbackResolver 解析所有可用工具的回调
+        // 将 AgentTools 中的 @Tool 注解方法转换为 ToolCallback
+        ToolCallback[] callbackArray = ToolCallbacks.from(agentTools);
         List<ToolCallback> callbacks = new ArrayList<>();
+        java.util.Collections.addAll(callbacks, callbackArray);
         
-        // 定义所有可用工具的名称
-        String[] toolNames = {"getUserLocation", "getWeather", "searchSongs"};
-        
-        for (String toolName : toolNames) {
-            try {
-                ToolCallback callback = toolCallbackResolver.resolve(toolName);
-                if (callback != null) {
-                    callbacks.add(callback);
-                    logger.debug("成功解析工具回调: {}", toolName);
-                }
-            } catch (Exception e) {
-                logger.warn("无法解析工具回调: {}", toolName, e);
-            }
+        logger.info("获取到 {} 个工具回调", callbacks.size());
+        for (ToolCallback callback : callbacks) {
+            logger.debug("工具回调: {} - {}", callback.getToolDefinition().name(), 
+                    callback.getToolDefinition().description());
         }
         
         return callbacks;
