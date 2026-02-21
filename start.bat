@@ -3,6 +3,8 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 REM =====================================================
 REM 智能音乐助手 - 启动脚本
+REM 用于编译和启动 Kimi Agent 服务
+REM 服务将运行在 http://localhost:8081
 REM =====================================================
 
 echo.
@@ -34,17 +36,13 @@ echo [2/4] Maven 环境检查通过
 echo.
 
 REM 检查 API Key
-echo [3/4] 检查 OpenAI API Key...
+echo [3/4] 检查 API 配置...
 if "%OPENAI_API_KEY%"=="" (
-    echo [警告] 未设置 OPENAI_API_KEY 环境变量
-    echo [提示] 请在系统环境变量中设置 OPENAI_API_KEY
-    echo [提示] 或使用以下命令临时设置：
-    echo     set OPENAI_API_KEY=your-api-key-here
-    echo.
-    choice /C YN /M "是否继续启动"
-    if errorlevel 2 exit /b 1
+    echo [信息] 使用配置文件中设置的 API Key
+) else (
+    echo [信息] 使用环境变量中的 API Key
 )
-echo [3/4] API Key 检查完成
+echo [3/4] API 配置检查完成
 echo.
 
 REM 编译项目
@@ -69,11 +67,13 @@ echo 正在编译项目...
 call mvn clean package -DskipTests -q
 
 if errorlevel 1 (
-    echo [错误] 编译失败
+    echo [错误] 编译失败，请检查错误信息
     pause
     exit /b 1
 )
 
+echo.
+echo 编译成功！
 echo.
 echo 正在启动服务...
 echo 日志文件: logs\app.log
@@ -93,15 +93,17 @@ echo 等待服务启动...
 timeout /t 8 /nobreak >nul
 
 REM 检查服务是否启动成功
-curl -s http://localhost:8081/api/chat/health >nul 2>&1
+powershell -Command "try { Invoke-RestMethod -Uri 'http://localhost:8081/api/chat/health' -TimeoutSec 5 >$null; exit 0 } catch { exit 1 }" >nul 2>&1
+
 if errorlevel 1 (
-    REM 尝试使用 PowerShell 检查
-    powershell -Command "try { Invoke-RestMethod -Uri 'http://localhost:8081/api/chat/health' -TimeoutSec 5; exit 0 } catch { exit 1 }" >nul 2>&1
-    if errorlevel 1 (
-        echo [错误] 服务启动失败，请检查日志: logs\app.log
-        pause
-        exit /b 1
-    )
+    echo [错误] 服务启动失败，请检查日志: logs\app.log
+    echo.
+    echo 常见原因：
+    echo   1. API Key 配置错误
+    echo   2. 端口 8081 被其他程序占用
+    echo   3. Java 版本不兼容
+    pause
+    exit /b 1
 )
 
 echo.
