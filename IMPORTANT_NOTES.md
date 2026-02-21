@@ -79,5 +79,8 @@ String response = chatClient.prompt()
 ## 参考资料
 
 - Spring AI 官方文档: https://docs.spring.io/spring-ai/reference/
-- 工具调用文档: doc/spring-ai/tools.adoc
-- ChatClient API 文档: doc/spring-ai/Chat Client API.adoc
+- Spring AI Tool API文档: doc/spring-ai/tools.adoc
+- Spring AI ChatClient API 文档: doc/spring-ai/Chat Client API.adoc
+- Spring AI Chat Memory API 文档: doc/spring-ai/chat-memory.adoc
+- Spring AI prompt API 文档: doc/spring-ai/prompt.adoc
+- Spring AI advisors API 文档: doc/spring-ai/advisors.adoc
