@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 REM =====================================================
 REM 智能音乐助手 - 重启脚本
-REM 执行流程：停止 -> 清理 -> 编译 -> 启动
+REM 执行流程：停止 - 清理 - 编译 - 启动
 REM =====================================================
 
 echo.
@@ -36,7 +36,7 @@ REM 步骤3：重新编译
 echo [步骤 3/4] 正在重新编译项目...
 call mvn package -DskipTests -q
 if errorlevel 1 (
-    echo [错误] 编译项目失败，请检查错误信息
+    echo [错误] 编译项目失败
     pause
     exit /b 1
 )
@@ -52,11 +52,10 @@ if not exist target\kimi-agent-1.0.0.jar (
 
 REM 步骤4：启动项目
 echo [步骤 4/4] 正在启动项目...
-echo.
 echo 日志文件: logs\app.log
 echo.
 
-REM 创建日志目录（如果不存在）
+REM 创建日志目录
 if not exist logs mkdir logs
 
 REM 启动应用
@@ -66,7 +65,7 @@ echo 等待服务启动...
 timeout /t 8 /nobreak >nul
 
 REM 检查服务是否启动成功
-powershell -Command "try { Invoke-RestMethod -Uri 'http://localhost:8081/api/chat/health' -TimeoutSec 5 >$null; exit 0 } catch { exit 1 }" >nul 2>&1
+powershell -Command "Invoke-RestMethod -Uri 'http://localhost:8081/api/chat/health' -TimeoutSec 5" >nul 2>&1
 
 if errorlevel 1 (
     echo [错误] 服务启动失败，请检查日志: logs\app.log
@@ -81,6 +80,5 @@ echo ============================================
 echo  访问地址: http://localhost:8081
 echo  API地址: http://localhost:8081/api/chat/health
 echo.
-echo  按任意键打开浏览器...
-pause >nul
+pause
 start http://localhost:8081

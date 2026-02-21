@@ -31,8 +31,6 @@ logging:
   level:
     com.kimi.agent: DEBUG
     org.springframework.ai: DEBUG
-    com: DEBUG
-    org: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
