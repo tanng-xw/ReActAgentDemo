@@ -107,7 +107,7 @@ class ChatControllerTest {
      */
     private static class MockChatService extends ChatService {
         public MockChatService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override

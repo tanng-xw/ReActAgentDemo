@@ -9,15 +9,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 
-import org.springframework.ai.chat.model.Generation;
+
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -51,6 +51,9 @@ public class ChatService {
     /** ToolCallingManager 用于管理工具调用 */
     private final ToolCallingManager toolCallingManager;
     
+    /** ToolCallbackResolver 用于解析工具回调 */
+    private final ToolCallbackResolver toolCallbackResolver;
+    
     /** Agent 工具 */
     private final AgentTools agentTools;
 
@@ -61,12 +64,18 @@ public class ChatService {
     @Value("classpath:/prompts/system-prompt.st")
     private Resource systemPromptResource;
 
-    public ChatService(ChatClient.Builder chatClientBuilder, ToolCallingManager toolCallingManager, AgentTools agentTools) {
+    public ChatService(ChatClient.Builder chatClientBuilder, ToolCallingManager toolCallingManager, 
+                       ToolCallbackResolver toolCallbackResolver, AgentTools agentTools) {
         this.toolCallingManager = toolCallingManager;
+        this.toolCallbackResolver = toolCallbackResolver;
         this.agentTools = agentTools;
+        
+        // 构建系统提示词（必须在构造时加载）
+        String systemPrompt = buildSystemPrompt();
+        
         // 使用 ChatClient.Builder 构建 ChatClient，**不**注册默认工具（使用 ToolCallingManager 手动管理）
         this.chatClient = chatClientBuilder
-                .defaultSystem(buildSystemPrompt())
+                .defaultSystem(systemPrompt)
                 .build();
     }
 
@@ -93,11 +102,12 @@ public class ChatService {
             // 发送初始思考提示
             responseConsumer.accept(ChatResponse.thinking("正在思考问题...", sessionId));
 
-            // 构建消息列表
-            List<Message> messages = buildMessages(session, userMessage);
+            // 构建消息列表（不包含系统消息，因为 ChatClient 已经设置了 defaultSystem）
+            List<Message> messages = buildMessages(session);
             
             // 获取工具回调
             List<ToolCallback> toolCallbacks = getToolCallbacks();
+            logger.info("获取到 {} 个工具回调", toolCallbacks.size());
             
             // 创建工具调用选项
             ToolCallingChatOptions toolOptions = ToolCallingChatOptions.builder()
@@ -109,7 +119,7 @@ public class ChatService {
             int toolCallCount = 0;
             
             while (toolCallCount < maxToolCalls) {
-                // 创建提示
+                // 创建提示（包含工具选项）
                 Prompt prompt = new Prompt(messages, toolOptions);
                 
                 // 调用模型
@@ -185,23 +195,37 @@ public class ChatService {
      * @return 工具回调列表
      */
     private List<ToolCallback> getToolCallbacks() {
+        // 通过 ToolCallbackResolver 解析所有可用工具的回调
         List<ToolCallback> callbacks = new ArrayList<>();
-        // 通过 Spring AI 的工具解析机制获取工具回调
-        // 这里我们依赖 ToolCallingManager 从 Spring 上下文中解析工具
+        
+        // 定义所有可用工具的名称
+        String[] toolNames = {"getUserLocation", "getWeather", "searchSongs"};
+        
+        for (String toolName : toolNames) {
+            try {
+                ToolCallback callback = toolCallbackResolver.resolve(toolName);
+                if (callback != null) {
+                    callbacks.add(callback);
+                    logger.debug("成功解析工具回调: {}", toolName);
+                }
+            } catch (Exception e) {
+                logger.warn("无法解析工具回调: {}", toolName, e);
+            }
+        }
+        
         return callbacks;
     }
 
     /**
-     * 构建消息列表
+     * 构建消息列表（不包含系统消息，因为 ChatClient 已经设置了 defaultSystem）
      * 
      * @param session 会话
-     * @param userMessage 用户消息
      * @return 消息列表
      */
-    private List<Message> buildMessages(ChatSession session, String userMessage) {
+    private List<Message> buildMessages(ChatSession session) {
         List<Message> messages = new ArrayList<>();
         
-        // 添加历史对话
+        // 添加历史对话（不包含当前用户消息，因为它已经在 session 中被添加了）
         for (ChatMessage msg : session.getMessages()) {
             switch (msg.getType()) {
                 case USER:
@@ -214,9 +238,6 @@ public class ChatService {
                     break;
             }
         }
-        
-        // 添加当前用户消息
-        messages.add(new UserMessage(userMessage));
         
         return messages;
     }
@@ -258,8 +279,10 @@ public class ChatService {
 
     /**
      * 构建系统提示词
+     * 必须从 classpath:/prompts/system-prompt.st 加载，如果加载失败则抛出异常
      * 
      * @return 系统提示词内容
+     * @throws IllegalStateException 如果无法加载系统提示词模板
      */
     private String buildSystemPrompt() {
         if (cachedSystemPrompt != null) {
@@ -271,37 +294,16 @@ public class ChatService {
                 try (BufferedReader reader = new BufferedReader(
                         new InputStreamReader(systemPromptResource.getInputStream(), StandardCharsets.UTF_8))) {
                     cachedSystemPrompt = reader.lines().collect(Collectors.joining("\n"));
+                    logger.info("成功加载系统提示词模板，长度: {}", cachedSystemPrompt.length());
                     return cachedSystemPrompt;
                 }
             }
         } catch (IOException e) {
-            logger.error("读取系统提示词失败", e);
+            logger.error("读取系统提示词模板失败: {}", systemPromptResource, e);
+            throw new IllegalStateException("无法加载系统提示词模板: " + e.getMessage(), e);
         }
 
-        return getDefaultSystemPrompt();
-    }
-
-    /**
-     * 获取默认系统提示词
-     * 
-     * @return 默认系统提示词
-     */
-    private String getDefaultSystemPrompt() {
-        return """
-                你是一个智能音乐助手，能够帮助用户查询信息、搜索歌曲等。
-
-                重要规则：
-                1. 你可以使用工具来帮助回答用户问题。
-                2. 当你需要使用工具时，系统会自动调用相应的工具。
-                3. 工具调用结果会自动返回给你，你可以基于结果继续思考。
-                4. 在给出最终答案前，请先说明你的思考过程，包括是否调用了工具以及工具结果。
-                5. **最终答案必须以"回答："开头**，这样系统才能识别并显示给用户。
-
-                可用工具：
-                1. getUserLocation - 查询用户所在的城市位置（北京、上海或杭州）
-                2. getWeather - 查询指定城市的天气信息
-                3. searchSongs - 根据关键词搜索歌曲
-                """;
+        throw new IllegalStateException("系统提示词模板不存在: classpath:/prompts/system-prompt.st");
     }
 
     /**
