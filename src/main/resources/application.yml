@@ -1,0 +1,51 @@
+# 智能音乐助手配置
+
+spring:
+  application:
+    name: kimi-agent
+
+  # Spring AI OpenAI 配置
+  ai:
+    openai:
+      # API 密钥
+      api-key: sk-22005f4049f34413bb450cb3cb692ebb
+      # 基础 URL（DeepSeek API）
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          # 使用的模型（DeepSeek 模型）
+          model: deepseek-chat
+          # 温度参数，控制创造性
+          temperature: 0.7
+          # 最大token数
+          max-tokens: 2000
+
+# 服务器配置
+server:
+  port: 8081
+  servlet:
+    context-path: /
+
+# 日志配置
+logging:
+  level:
+    com.kimi.agent: DEBUG
+    org.springframework.ai: DEBUG
+    com: DEBUG
+    org: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/app.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+
+# 自定义配置
+agent:
+  # 会话超时时间（毫秒）
+  session-timeout: 3600000
+  # 最大历史消息数
+  max-history-messages: 50
