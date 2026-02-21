@@ -70,13 +70,9 @@ public class ChatService {
         this.toolCallbackResolver = toolCallbackResolver;
         this.agentTools = agentTools;
         
-        // 构建系统提示词（必须在构造时加载）
-        String systemPrompt = buildSystemPrompt();
-        
-        // 使用 ChatClient.Builder 构建 ChatClient，**不**注册默认工具（使用 ToolCallingManager 手动管理）
-        this.chatClient = chatClientBuilder
-                .defaultSystem(systemPrompt)
-                .build();
+        // 注意：@Value 注入在构造后才完成，所以这里不能调用 buildSystemPrompt()
+        // 系统提示词将在每次请求时通过消息列表添加
+        this.chatClient = chatClientBuilder.build();
     }
 
     /**
@@ -217,13 +213,17 @@ public class ChatService {
     }
 
     /**
-     * 构建消息列表（不包含系统消息，因为 ChatClient 已经设置了 defaultSystem）
+     * 构建消息列表（包含系统消息和历史对话）
      * 
      * @param session 会话
      * @return 消息列表
      */
     private List<Message> buildMessages(ChatSession session) {
         List<Message> messages = new ArrayList<>();
+        
+        // 添加系统消息（延迟加载）
+        String systemPrompt = buildSystemPrompt();
+        messages.add(new org.springframework.ai.chat.messages.SystemMessage(systemPrompt));
         
         // 添加历史对话（不包含当前用户消息，因为它已经在 session 中被添加了）
         for (ChatMessage msg : session.getMessages()) {
@@ -289,21 +289,28 @@ public class ChatService {
             return cachedSystemPrompt;
         }
 
+        logger.info("开始加载系统提示词模板...");
+        
+        if (systemPromptResource == null) {
+            logger.error("systemPromptResource 为 null，@Value 注入失败");
+            throw new IllegalStateException("系统提示词资源注入失败，请检查 @Value 注解");
+        }
+
         try {
-            if (systemPromptResource != null && systemPromptResource.exists()) {
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(systemPromptResource.getInputStream(), StandardCharsets.UTF_8))) {
-                    cachedSystemPrompt = reader.lines().collect(Collectors.joining("\n"));
-                    logger.info("成功加载系统提示词模板，长度: {}", cachedSystemPrompt.length());
-                    return cachedSystemPrompt;
-                }
+            logger.info("系统提示词资源: {}", systemPromptResource);
+            logger.info("系统提示词资源是否存在: {}", systemPromptResource.exists());
+            logger.info("系统提示词资源 URI: {}", systemPromptResource.getURI());
+            
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(systemPromptResource.getInputStream(), StandardCharsets.UTF_8))) {
+                cachedSystemPrompt = reader.lines().collect(Collectors.joining("\n"));
+                logger.info("成功加载系统提示词模板，长度: {}", cachedSystemPrompt.length());
+                return cachedSystemPrompt;
             }
         } catch (IOException e) {
             logger.error("读取系统提示词模板失败: {}", systemPromptResource, e);
             throw new IllegalStateException("无法加载系统提示词模板: " + e.getMessage(), e);
         }
-
-        throw new IllegalStateException("系统提示词模板不存在: classpath:/prompts/system-prompt.st");
     }
 
     /**
