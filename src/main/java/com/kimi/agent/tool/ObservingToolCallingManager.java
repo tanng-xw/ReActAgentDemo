@@ -12,6 +12,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -67,6 +68,9 @@ public class ObservingToolCallingManager implements ToolCallingManager {
         ToolContext context = ToolContextHolder.getContext();
         String sessionId = context != null ? context.getSessionId() : "unknown";
 
+        // 记录当前轮次的工具调用，用于后续匹配结果
+        List<String> currentToolCalls = new ArrayList<>();
+
         // 在工具调用前，发送思考内容和工具调用信息
         if (callback != null && chatResponse.getResult() != null) {
             AssistantMessage assistantMessage = (AssistantMessage) chatResponse.getResult().getOutput();
@@ -83,6 +87,12 @@ public class ObservingToolCallingManager implements ToolCallingManager {
                 assistantMessage.getToolCalls().forEach(toolCall -> {
                     String toolName = toolCall.name();
                     String arguments = toolCall.arguments();
+                    String toolCallId = toolCall.id();
+                    
+                    // 记录当前轮次的工具调用ID
+                    if (toolCallId != null) {
+                        currentToolCalls.add(toolCallId);
+                    }
                     
                     logger.info("发送工具调用信息到前端: {}, 参数: {}", toolName, arguments);
                     
@@ -100,9 +110,9 @@ public class ObservingToolCallingManager implements ToolCallingManager {
         logger.info("工具执行完成，返回对话历史消息数: {}", 
                 result.conversationHistory().size());
         
-        // 从对话历史中提取工具执行结果
-        if (callback != null) {
-            extractAndSendToolResults(result, sessionId, callback);
+        // 从对话历史中提取工具执行结果（只提取当前轮次的）
+        if (callback != null && !currentToolCalls.isEmpty()) {
+            extractAndSendToolResults(result, sessionId, callback, currentToolCalls);
         }
         
         return result;
@@ -110,27 +120,35 @@ public class ObservingToolCallingManager implements ToolCallingManager {
     
     /**
      * 从 ToolExecutionResult 中提取工具执行结果并发送给前端
+     * 只发送当前轮次的工具结果，避免重复发送历史结果
      * 
      * @param result 工具执行结果
      * @param sessionId 会话ID
      * @param callback 回调函数
+     * @param currentToolCallIds 当前轮次的工具调用ID列表
      */
     private void extractAndSendToolResults(ToolExecutionResult result, String sessionId, 
-                                          Consumer<com.kimi.agent.model.ChatResponse> callback) {
+                                          Consumer<com.kimi.agent.model.ChatResponse> callback,
+                                          List<String> currentToolCallIds) {
         // 从对话历史中查找 ToolResponseMessage 来获取工具执行结果
         for (org.springframework.ai.chat.messages.Message message : result.conversationHistory()) {
             if (message instanceof ToolResponseMessage) {
                 ToolResponseMessage toolResponseMsg = (ToolResponseMessage) message;
                 
                 toolResponseMsg.getResponses().forEach(toolResponse -> {
-                    String toolName = toolResponse.name();
-                    String responseData = toolResponse.responseData();
-                    logger.info("发送工具执行结果到前端: {}, 结果: {}", toolName, responseData);
+                    String toolCallId = toolResponse.id();
                     
-                    // 发送包含结果的工具调用响应
-                    com.kimi.agent.model.ChatResponse resultResponse = 
-                        com.kimi.agent.model.ChatResponse.toolCallResult(toolName, null, responseData, sessionId);
-                    callback.accept(resultResponse);
+                    // 只发送当前轮次的工具结果
+                    if (toolCallId != null && currentToolCallIds.contains(toolCallId)) {
+                        String toolName = toolResponse.name();
+                        String responseData = toolResponse.responseData();
+                        logger.info("发送工具执行结果到前端: {}, 结果: {}", toolName, responseData);
+                        
+                        // 发送包含结果的工具调用响应
+                        com.kimi.agent.model.ChatResponse resultResponse = 
+                            com.kimi.agent.model.ChatResponse.toolCallResult(toolName, null, responseData, sessionId);
+                        callback.accept(resultResponse);
+                    }
                 });
             }
         }
