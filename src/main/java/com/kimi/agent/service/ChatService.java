@@ -4,11 +4,12 @@ import com.kimi.agent.model.ChatMessage;
 import com.kimi.agent.model.ChatResponse;
 import com.kimi.agent.model.ChatSession;
 import com.kimi.agent.tool.ObservingToolCallingManager;
+import com.kimi.agent.tool.ToolContext;
+import com.kimi.agent.tool.ToolContextHolder;
 import com.kimi.agent.tools.AgentTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -77,8 +78,13 @@ public class ChatService {
             // 发送初始思考提示
             responseConsumer.accept(ChatResponse.thinking("正在思考问题...", sessionId));
 
-            // 设置 ToolCallingManager 的上下文（通过 ThreadLocal 传递回调）
-            ObservingToolCallingManager.setContext(responseConsumer, sessionId);
+            // 创建工具上下文，包含 SessionId 等内部参数
+            ToolContext toolContext = ToolContext.create()
+                    .setSessionId(sessionId);
+            // 未来可以在这里添加更多参数，如：.setUserId(userId)
+            
+            ToolContextHolder.setContext(toolContext);
+            ObservingToolCallingManager.setCallback(responseConsumer);
 
             try {
                 // 构建对话历史
@@ -102,15 +108,17 @@ public class ChatService {
                 parseAndSendResponse(content, sessionId, responseConsumer);
 
             } finally {
-                // 清除 ToolCallingManager 的上下文
-                ObservingToolCallingManager.clearContext();
+                // 清除上下文
+                ToolContextHolder.clear();
+                ObservingToolCallingManager.clearCallback();
             }
 
         } catch (Exception e) {
             logger.error("处理消息时发生错误", e);
             responseConsumer.accept(ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
             // 确保清除上下文
-            ObservingToolCallingManager.clearContext();
+            ToolContextHolder.clear();
+            ObservingToolCallingManager.clearCallback();
         }
     }
 
