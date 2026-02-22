@@ -87,6 +87,12 @@ public class ObservingToolCallingManager implements ToolCallingManager {
                 assistantMessage.getToolCalls().forEach(toolCall -> {
                     String toolName = toolCall.name();
                     String arguments = toolCall.arguments();
+                    
+                    // 将参数中的占位符 sessionId 替换为真实的会话 ID
+                    if (arguments != null && arguments.contains("sessionId")) {
+                        arguments = arguments.replaceAll("\"sessionId\"\s*:\s*\"[^\"]*\"", "\"sessionId\": \"" + sessionId + "\"");
+                    }
+                    
                     logger.info("发送工具调用信息到前端: {}, 参数: {}", toolName, arguments);
                     
                     // 发送包含参数的工具调用响应
