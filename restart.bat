@@ -59,7 +59,7 @@ REM 创建日志目录
 if not exist logs mkdir logs
 
 REM 启动应用
-start "KimiAgent" java -jar target\kimi-agent-1.0.0.jar
+start "KimiAgent" cmd /c "chcp 65001 >nul && java -jar target\kimi-agent-1.0.0.jar"
 
 echo 等待服务启动...
 timeout /t 8 /nobreak >nul
