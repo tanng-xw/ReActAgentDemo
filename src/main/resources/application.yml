@@ -16,6 +16,8 @@ logging:
   level:
     com.kimi.agent: DEBUG
     org.springframework.ai: DEBUG
+    com: ERROR
+    org: ERROR
   file:
     name: logs/app.log
   pattern:
