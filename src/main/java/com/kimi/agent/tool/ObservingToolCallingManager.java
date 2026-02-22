@@ -126,7 +126,7 @@ public class ObservingToolCallingManager implements ToolCallingManager {
                 org.springframework.ai.chat.messages.ToolResponseMessage toolResponseMsg = 
                     (org.springframework.ai.chat.messages.ToolResponseMessage) message;
                 
-                toolResponseMsg.getToolResponses().forEach(toolResponse -> {
+                toolResponseMsg.getResponses().forEach(toolResponse -> {
                     String toolName = toolResponse.name();
                     String responseData = toolResponse.responseData();
                     logger.info("发送工具执行结果到前端: {}, 结果: {}", toolName, responseData);
