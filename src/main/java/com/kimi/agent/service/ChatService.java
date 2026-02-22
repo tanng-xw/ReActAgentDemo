@@ -10,6 +10,9 @@ import com.kimi.agent.tools.AgentTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -18,6 +21,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -68,11 +73,6 @@ public class ChatService {
             // 获取或创建会话
             ChatSession session = ChatSession.getOrCreate(sessionId);
 
-            // 记录用户消息
-            ChatMessage userChatMessage = new ChatMessage(ChatMessage.MessageType.USER, userMessage);
-            userChatMessage.setId(String.valueOf(System.currentTimeMillis()));
-            session.addMessage(userChatMessage);
-
             logger.info("处理用户消息，会话ID: {}, 消息: {}", sessionId, userMessage);
 
             // 发送初始思考提示
@@ -80,38 +80,42 @@ public class ChatService {
 
             // 创建工具上下文，包含 SessionId 等内部参数
             ToolContext toolContext = ToolContext.create()
-                    .setSessionId(sessionId);
+                    .setSessionId(sessionId)
+                    .setChatSession(session);
             // 未来可以在这里添加更多参数，如：.setUserId(userId)
             
             ToolContextHolder.setContext(toolContext);
             ObservingToolCallingManager.setCallback(responseConsumer);
 
+            String content;
             try {
-                // 构建对话历史
-                String chatHistory = buildChatHistory(session);
+                // 构建对话历史消息列表（不包含当前用户消息）
+                List<Message> historyMessages = buildHistoryMessages(session);
 
                 // 使用 ChatClient 进行对话
                 // ChatClient 会自动检测模型是否需要调用工具，并执行工具调用循环
                 // 中间步骤会通过 ObservingToolCallingManager 发送到前端
-                String content = chatClient.prompt()
-                        .system(buildSystemPrompt() + "\n\n历史对话上下文：\n" + chatHistory)
+                content = chatClient.prompt()
+                        .system(buildSystemPrompt())
+                        .messages(historyMessages)
                         .user(userMessage)
                         .call()
                         .content();
 
                 logger.info("模型响应: {}", content);
 
-                // 将模型响应添加到会话
-                session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
-
-                // 解析响应，分离思考过程和最终答案
-                parseAndSendResponse(content, sessionId, responseConsumer);
-
             } finally {
                 // 清除上下文
                 ToolContextHolder.clear();
                 ObservingToolCallingManager.clearCallback();
             }
+
+            // 模型调用成功后，保存用户消息和助手响应到会话
+            session.addMessage(new ChatMessage(ChatMessage.MessageType.USER, userMessage));
+            session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
+
+            // 解析响应，分离思考过程和最终答案
+            parseAndSendResponse(content, sessionId, responseConsumer);
 
         } catch (Exception e) {
             logger.error("处理消息时发生错误", e);
@@ -158,29 +162,32 @@ public class ChatService {
     }
 
     /**
-     * 构建对话历史
+     * 构建对话历史消息列表（转换为 Spring AI Message 对象）
+     * 只包含 USER 和 ASSISTANT 消息，工具调用细节已包含在 ASSISTANT 消息中
      * 
      * @param session 会话
-     * @return 对话历史字符串
+     * @return 对话历史消息列表
      */
-    private String buildChatHistory(ChatSession session) {
-        StringBuilder sb = new StringBuilder();
+    private List<Message> buildHistoryMessages(ChatSession session) {
+        List<Message> messages = new ArrayList<>();
+        
         for (ChatMessage msg : session.getMessages()) {
             switch (msg.getType()) {
                 case USER:
-                    sb.append("用户：").append(msg.getContent()).append("\n");
+                    messages.add(new UserMessage(msg.getContent()));
                     break;
                 case ASSISTANT:
-                    sb.append("助手：").append(msg.getContent()).append("\n");
+                    messages.add(new AssistantMessage(msg.getContent()));
                     break;
                 case TOOL_CALL:
-                    sb.append("工具结果：").append(msg.getContent()).append("\n");
+                    // 工具调用消息已在 ASSISTANT 消息中体现，不需要单独添加
+                    // 这些消息主要用于前端展示和调试
                     break;
                 default:
                     break;
             }
         }
-        return sb.toString();
+        return messages;
     }
 
     /**

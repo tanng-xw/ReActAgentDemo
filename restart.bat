@@ -80,5 +80,5 @@ echo ============================================
 echo  访问地址: http://localhost:8081
 echo  API地址: http://localhost:8081/api/chat/health
 echo.
-pause
-start http://localhost:8081
+@REM pause
+@REM start http://localhost:8081

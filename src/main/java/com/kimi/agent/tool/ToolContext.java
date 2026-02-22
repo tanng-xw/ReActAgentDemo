@@ -1,5 +1,7 @@
 package com.kimi.agent.tool;
 
+import com.kimi.agent.model.ChatSession;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -85,6 +87,25 @@ public class ToolContext {
      */
     public ToolContext setUserId(String userId) {
         return set("userId", userId);
+    }
+    
+    /**
+     * 获取 ChatSession
+     * 
+     * @return ChatSession
+     */
+    public ChatSession getChatSession() {
+        return get("chatSession");
+    }
+    
+    /**
+     * 设置 ChatSession
+     * 
+     * @param chatSession 会话
+     * @return 当前上下文（链式调用）
+     */
+    public ToolContext setChatSession(ChatSession chatSession) {
+        return set("chatSession", chatSession);
     }
     
     /**

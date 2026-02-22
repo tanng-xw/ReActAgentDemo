@@ -42,5 +42,5 @@ if !FOUND! EQU 1 (
 )
 
 echo.
-pause
+@REM pause
 exit /b 0

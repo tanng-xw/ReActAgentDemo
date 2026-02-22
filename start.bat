@@ -114,6 +114,6 @@ echo  访问地址: http://localhost:8081
 echo  API地址: http://localhost:8081/api/chat/health
 echo  日志文件: logs\app.log
 echo.
-echo  按任意键打开浏览器...
-pause >nul
-start http://localhost:8081
+@REM echo  按任意键打开浏览器...
+@REM pause >nul
+@REM start http://localhost:8081
