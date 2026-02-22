@@ -587,7 +587,13 @@
                         addToolCallMessage(response.toolName, response.toolArguments, response.toolResult);
                         break;
                     case 'FINAL_ANSWER':
-                        addFinalAnswer(response.content);
+                        // 如果已经显示了流式内容，只需更新标题和样式
+                        // 避免重复显示相同内容
+                        if (currentStreamingElement) {
+                            finalizeStreamingAnswer(response.content);
+                        } else {
+                            addFinalAnswer(response.content);
+                        }
                         // 流式结束，重置当前流式元素
                         currentStreamingElement = null;
                         break;
@@ -703,6 +709,24 @@
                 </div>
             `;
             container.appendChild(answerDiv);
+            scrollToBottom();
+        }
+
+        // 将流式回答转为最终答案（避免重复显示）
+        function finalizeStreamingAnswer(finalContent) {
+            if (!currentStreamingElement) return;
+            
+            // 找到流式消息的父元素
+            const streamingSection = currentStreamingElement.closest('.streaming-section');
+            if (streamingSection) {
+                // 更新为最终答案样式
+                streamingSection.className = 'final-answer-section';
+                streamingSection.innerHTML = `
+                    <div class="final-answer-header">💡 回答</div>
+                    <div class="final-answer-content">${escapeHtml(finalContent)}</div>
+                `;
+            }
+            currentStreamingElement = null;
             scrollToBottom();
         }
 
