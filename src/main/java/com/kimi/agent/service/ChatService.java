@@ -13,6 +13,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import reactor.core.publisher.Flux;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -68,7 +69,7 @@ public class ChatService {
      * @param sessionId 会话ID
      * @param responseConsumer 响应消费者（用于流式返回）
      */
-    public void processMessage(String userMessage, String sessionId, Consumer<ChatResponse> responseConsumer) {
+    public void processMessage(String userMessage, String sessionId, Consumer<com.kimi.agent.model.ChatResponse> responseConsumer) {
         try {
             // 获取或创建会话
             ChatSession session = ChatSession.getOrCreate(sessionId);
@@ -76,66 +77,90 @@ public class ChatService {
             logger.info("处理用户消息，会话ID: {}, 消息: {}", sessionId, userMessage);
 
             // 发送初始思考提示
-            responseConsumer.accept(ChatResponse.thinking("正在思考问题...", sessionId));
+            responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking("正在思考问题...", sessionId));
 
             // 创建工具上下文，包含 SessionId 等内部参数
             ToolContext toolContext = ToolContext.create()
                     .setSessionId(sessionId)
                     .setChatSession(session);
-            // 未来可以在这里添加更多参数，如：.setUserId(userId)
             
             ToolContextHolder.setContext(toolContext);
             ObservingToolCallingManager.setCallback(responseConsumer);
 
-            String content;
+            StringBuilder contentBuilder = new StringBuilder();
             try {
                 // 构建对话历史消息列表（不包含当前用户消息）
                 List<Message> historyMessages = buildHistoryMessages(session);
 
-                // 使用 ChatClient 进行对话
-                // ChatClient 会自动检测模型是否需要调用工具，并执行工具调用循环
-                // 中间步骤会通过 ObservingToolCallingManager 发送到前端
-                content = chatClient.prompt()
+                // 使用 ChatClient 进行流式对话
+                logger.info("开始流式调用模型...");
+                
+                // Spring AI 的 stream() 返回 StreamResponseSpec，我们需要订阅它
+                chatClient.prompt()
                         .system(buildSystemPrompt())
                         .messages(historyMessages)
                         .user(userMessage)
-                        .call()
-                        .content();
-
-                logger.info("模型响应: {}", content);
+                        .stream()
+                        .content()
+                        .subscribe(
+                                chunk -> {
+                                    // 处理每个流式响应块
+                                    if (chunk != null && !chunk.isEmpty()) {
+                                        contentBuilder.append(chunk);
+                                        // 实时发送流式内容到前端
+                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(chunk, sessionId));
+                                    }
+                                },
+                                error -> {
+                                    // 处理错误
+                                    logger.error("流式处理时发生错误", error);
+                                    responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("流式处理错误: " + error.getMessage(), sessionId));
+                                    ToolContextHolder.clear();
+                                    ObservingToolCallingManager.clearCallback();
+                                },
+                                () -> {
+                                    // 流式处理完成
+                                    String fullContent = contentBuilder.toString();
+                                    logger.info("流式响应完成，总长度: {}", fullContent.length());
+                                    
+                                    // 保存消息到会话
+                                    session.addMessage(new ChatMessage(ChatMessage.MessageType.USER, userMessage));
+                                    session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, fullContent));
+                                    
+                                    // 发送最终答案
+                                    parseAndSendFinalResponse(fullContent, sessionId, responseConsumer);
+                                    
+                                    // 清除上下文
+                                    ToolContextHolder.clear();
+                                    ObservingToolCallingManager.clearCallback();
+                                }
+                        );
 
             } finally {
-                // 清除上下文
+                // 确保清除上下文（如果上面未完成）
                 ToolContextHolder.clear();
                 ObservingToolCallingManager.clearCallback();
             }
 
-            // 模型调用成功后，保存用户消息和助手响应到会话
-            session.addMessage(new ChatMessage(ChatMessage.MessageType.USER, userMessage));
-            session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, content));
-
-            // 解析响应，分离思考过程和最终答案
-            parseAndSendResponse(content, sessionId, responseConsumer);
-
         } catch (Exception e) {
             logger.error("处理消息时发生错误", e);
-            responseConsumer.accept(ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
-            // 确保清除上下文
+            responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
             ToolContextHolder.clear();
             ObservingToolCallingManager.clearCallback();
         }
     }
 
     /**
-     * 解析模型响应，分离思考过程和最终答案
+     * 解析最终响应，分离思考过程和最终答案
+     * 在流式完成后调用，发送最终结果
      * 
-     * @param content 模型响应内容
+     * @param content 完整模型响应内容
      * @param sessionId 会话ID
      * @param responseConsumer 响应消费者
      */
-    private void parseAndSendResponse(String content, String sessionId, Consumer<ChatResponse> responseConsumer) {
+    private void parseAndSendFinalResponse(String content, String sessionId, Consumer<ChatResponse> responseConsumer) {
         if (content == null || content.isEmpty()) {
-            responseConsumer.accept(ChatResponse.error("模型返回空响应", sessionId));
+            responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("模型返回空响应", sessionId));
             return;
         }
 
@@ -143,21 +168,14 @@ public class ChatService {
         int finalAnswerIndex = content.indexOf(FINAL_ANSWER_PREFIX);
         
         if (finalAnswerIndex >= 0) {
-            // 提取思考过程（标记前的内容）
-            String thinking = content.substring(0, finalAnswerIndex).trim();
-            if (!thinking.isEmpty()) {
-                // 发送思考过程
-                responseConsumer.accept(ChatResponse.thinking(thinking, sessionId));
-            }
-
             // 提取最终答案
             String finalAnswer = content.substring(finalAnswerIndex + FINAL_ANSWER_PREFIX.length()).trim();
             
             // 发送最终答案
-            responseConsumer.accept(ChatResponse.finalAnswer(finalAnswer, sessionId));
+            responseConsumer.accept(com.kimi.agent.model.ChatResponse.finalAnswer(finalAnswer, sessionId));
         } else {
             // 没有标记，将整个内容作为最终答案
-            responseConsumer.accept(ChatResponse.finalAnswer(content, sessionId));
+            responseConsumer.accept(com.kimi.agent.model.ChatResponse.finalAnswer(content, sessionId));
         }
     }
 

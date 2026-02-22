@@ -17,6 +17,8 @@ public class ChatResponse {
         THINKING,
         /** 工具调用 */
         TOOL_CALL,
+        /** 流式内容 */
+        STREAMING,
         /** 最终回答 */
         FINAL_ANSWER,
         /** 错误 */
@@ -166,6 +168,17 @@ public class ChatResponse {
         response.setToolArguments(toolArguments);
         response.setToolResult(toolResult);
         return response;
+    }
+
+    /**
+     * 创建流式内容响应
+     * 
+     * @param content 流式内容块
+     * @param sessionId 会话ID
+     * @return 响应对象
+     */
+    public static ChatResponse streaming(String content, String sessionId) {
+        return new ChatResponse(ResponseType.STREAMING, content, sessionId);
     }
 
     /**

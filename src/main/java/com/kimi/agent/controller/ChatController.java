@@ -60,13 +60,13 @@ public class ChatController {
         emitter.onTimeout(() -> logger.warn("SSE 连接超时，会话ID: {}", finalSessionId));
         emitter.onError(e -> logger.error("SSE 连接错误，会话ID: {}", finalSessionId, e));
 
-        // 异步处理消息
+        // 异步处理消息 - 在新线程中处理，避免阻塞
         new Thread(() -> {
             try {
                 logger.info("开始处理流式消息，会话ID: {}", finalSessionId);
                 chatService.processMessage(request.getMessage(), finalSessionId, response -> {
                     try {
-                        logger.info("发送SSE消息 - 会话: {}, 类型: {}", finalSessionId, response.getType());
+                        logger.debug("发送SSE消息 - 会话: {}, 类型: {}", finalSessionId, response.getType());
                         emitter.send(SseEmitter.event()
                                 .name("message")
                                 .data(response));

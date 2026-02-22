@@ -206,6 +206,54 @@
             white-space: pre-wrap;
         }
 
+        /* 流式消息样式 */
+        .streaming-section {
+            background: linear-gradient(135deg, #f0f7ff 0%, #e6f0ff 100%);
+            border-radius: 18px;
+            padding: 16px;
+            border: 1px solid #4a90e2;
+            border-bottom-left-radius: 4px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { border-color: #4a90e2; }
+            50% { border-color: #7fb3e8; }
+            100% { border-color: #4a90e2; }
+        }
+
+        .streaming-header {
+            color: #4a90e2;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+
+        .streaming-header::after {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4a90e2;
+            border-radius: 50%;
+            margin-left: 8px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .streaming-content {
+            color: #333;
+            font-size: 15px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
         .input-container {
             padding: 20px;
             background: white;
@@ -521,6 +569,9 @@
         }
 
         // 处理流数据
+        // 当前流式消息元素
+        let currentStreamingElement = null;
+        
         function handleStreamData(data) {
             try {
                 const response = JSON.parse(data);
@@ -529,19 +580,52 @@
                     case 'THINKING':
                         appendThinking(response.content);
                         break;
+                    case 'STREAMING':
+                        appendStreamingContent(response.content);
+                        break;
                     case 'TOOL_CALL':
                         addToolCallMessage(response.toolName, response.toolArguments, response.toolResult);
                         break;
                     case 'FINAL_ANSWER':
                         addFinalAnswer(response.content);
+                        // 流式结束，重置当前流式元素
+                        currentStreamingElement = null;
                         break;
                     case 'ERROR':
                         addErrorMessage(response.error);
+                        currentStreamingElement = null;
                         break;
                 }
             } catch (e) {
                 console.error('解析响应失败:', e, data);
             }
+        }
+
+        // 追加流式内容
+        function appendStreamingContent(content) {
+            const container = document.getElementById('messagesContainer');
+            
+            // 隐藏"正在思考"指示器，因为开始收到内容了
+            document.getElementById('typingIndicator').classList.remove('active');
+            
+            if (!currentStreamingElement) {
+                // 创建新的流式消息框
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message message-assistant';
+                messageDiv.innerHTML = `
+                    <div class="streaming-section">
+                        <div class="streaming-header">💭 正在回答</div>
+                        <div class="streaming-content"></div>
+                    </div>
+                `;
+                container.appendChild(messageDiv);
+                currentStreamingElement = messageDiv.querySelector('.streaming-content');
+                scrollToBottom();
+            }
+            
+            // 追加内容
+            currentStreamingElement.textContent += content;
+            scrollToBottom();
         }
 
         // 添加用户消息
