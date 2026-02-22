@@ -151,16 +151,37 @@
             padding: 12px 15px;
             margin-bottom: 12px;
             border-left: 3px solid #10b981;
-            display: flex;
-            align-items: center;
             color: #065f46;
             font-size: 14px;
         }
 
-        .tool-call-section::before {
+        .tool-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .tool-header::before {
             content: "🔧";
-            margin-right: 10px;
+            margin-right: 8px;
             font-size: 16px;
+        }
+
+        .tool-arguments, .tool-result {
+            margin-top: 6px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+
+        .tool-label {
+            font-weight: 600;
+            color: #047857;
+            margin-right: 4px;
         }
 
         .final-answer-section {
@@ -509,7 +530,7 @@
                         appendThinking(response.content);
                         break;
                     case 'TOOL_CALL':
-                        addToolCallMessage(response.toolName);
+                        addToolCallMessage(response.toolName, response.toolArguments, response.toolResult);
                         break;
                     case 'FINAL_ANSWER':
                         addFinalAnswer(response.content);
@@ -546,12 +567,42 @@
         }
 
         // 添加工具调用消息
-        function addToolCallMessage(toolName) {
+        function addToolCallMessage(toolName, toolArguments, toolResult) {
             const container = document.getElementById('messagesContainer');
-            const toolDiv = document.createElement('div');
-            toolDiv.className = 'tool-call-section';
-            toolDiv.textContent = `为您调用${toolName}工具。`;
-            container.appendChild(toolDiv);
+            
+            // 查找是否已存在相同工具名称的调用框（用于更新结果）
+            const existingToolDiv = Array.from(container.querySelectorAll('.tool-call-section')).find(
+                div => div.dataset.toolName === toolName && !div.dataset.hasResult
+            );
+            
+            if (existingToolDiv && toolResult) {
+                // 更新现有工具框，添加结果
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'tool-result';
+                resultDiv.innerHTML = `<span class="tool-label">结果:</span> ${escapeHtml(toolResult)}`;
+                existingToolDiv.appendChild(resultDiv);
+                existingToolDiv.dataset.hasResult = 'true';
+            } else if (!existingToolDiv) {
+                // 创建新的工具调用框
+                const toolDiv = document.createElement('div');
+                toolDiv.className = 'tool-call-section';
+                toolDiv.dataset.toolName = toolName;
+                
+                let html = `<div class="tool-header">🔧 调用 ${escapeHtml(toolName)}</div>`;
+                
+                if (toolArguments) {
+                    html += `<div class="tool-arguments"><span class="tool-label">参数:</span> ${escapeHtml(toolArguments)}</div>`;
+                }
+                
+                if (toolResult) {
+                    html += `<div class="tool-result"><span class="tool-label">结果:</span> ${escapeHtml(toolResult)}</div>`;
+                    toolDiv.dataset.hasResult = 'true';
+                }
+                
+                toolDiv.innerHTML = html;
+                container.appendChild(toolDiv);
+            }
+            
             scrollToBottom();
         }
 

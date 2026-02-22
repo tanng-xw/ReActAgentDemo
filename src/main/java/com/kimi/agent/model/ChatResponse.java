@@ -32,6 +32,12 @@ public class ChatResponse {
     /** 工具名称（当类型为 TOOL_CALL 时） */
     private String toolName;
     
+    /** 工具参数（JSON格式，当类型为 TOOL_CALL 时） */
+    private String toolArguments;
+    
+    /** 工具调用结果（当类型为 TOOL_CALL 时） */
+    private String toolResult;
+    
     /** 会话ID */
     private String sessionId;
     
@@ -79,6 +85,22 @@ public class ChatResponse {
 
     public void setToolName(String toolName) {
         this.toolName = toolName;
+    }
+
+    public String getToolArguments() {
+        return toolArguments;
+    }
+
+    public void setToolArguments(String toolArguments) {
+        this.toolArguments = toolArguments;
+    }
+
+    public String getToolResult() {
+        return toolResult;
+    }
+
+    public void setToolResult(String toolResult) {
+        this.toolResult = toolResult;
     }
 
     public String getSessionId() {
@@ -130,6 +152,23 @@ public class ChatResponse {
     }
 
     /**
+     * 创建工具调用响应（包含参数和结果）
+     * 
+     * @param toolName 工具名称
+     * @param toolArguments 工具参数
+     * @param toolResult 工具结果
+     * @param sessionId 会话ID
+     * @return 响应对象
+     */
+    public static ChatResponse toolCallResult(String toolName, String toolArguments, String toolResult, String sessionId) {
+        ChatResponse response = new ChatResponse(ResponseType.TOOL_CALL, "", sessionId);
+        response.setToolName(toolName);
+        response.setToolArguments(toolArguments);
+        response.setToolResult(toolResult);
+        return response;
+    }
+
+    /**
      * 创建最终回答响应
      * 
      * @param content 回答内容
@@ -162,6 +201,8 @@ public class ChatResponse {
                 "type=" + type +
                 ", content='" + content + '\'' +
                 ", toolName='" + toolName + '\'' +
+                ", toolArguments='" + toolArguments + '\'' +
+                ", toolResult='" + toolResult + '\'' +
                 ", sessionId='" + sessionId + '\'' +
                 ", done=" + done +
                 ", error='" + error + '\'' +

@@ -82,12 +82,17 @@ public class ObservingToolCallingManager implements ToolCallingManager {
                 callback.accept(com.kimi.agent.model.ChatResponse.thinking(content, sessionId));
             }
             
-            // 发送工具调用信息
+            // 发送工具调用信息（包含参数）
             if (assistantMessage.hasToolCalls()) {
                 assistantMessage.getToolCalls().forEach(toolCall -> {
                     String toolName = toolCall.name();
-                    logger.info("发送工具调用信息到前端: {}", toolName);
-                    callback.accept(com.kimi.agent.model.ChatResponse.toolCall(toolName, sessionId));
+                    String arguments = toolCall.arguments();
+                    logger.info("发送工具调用信息到前端: {}, 参数: {}", toolName, arguments);
+                    
+                    // 发送包含参数的工具调用响应
+                    com.kimi.agent.model.ChatResponse toolResponse = 
+                        com.kimi.agent.model.ChatResponse.toolCallResult(toolName, arguments, null, sessionId);
+                    callback.accept(toolResponse);
                 });
             }
         }
@@ -98,6 +103,40 @@ public class ObservingToolCallingManager implements ToolCallingManager {
         logger.info("工具执行完成，返回对话历史消息数: {}", 
                 result.conversationHistory().size());
         
+        // 从对话历史中提取工具执行结果
+        if (callback != null && sessionId != null) {
+            extractAndSendToolResults(result, sessionId, callback);
+        }
+        
         return result;
+    }
+    
+    /**
+     * 从 ToolExecutionResult 中提取工具执行结果并发送给前端
+     * 
+     * @param result 工具执行结果
+     * @param sessionId 会话ID
+     * @param callback 回调函数
+     */
+    private void extractAndSendToolResults(ToolExecutionResult result, String sessionId, 
+                                          Consumer<com.kimi.agent.model.ChatResponse> callback) {
+        // 从对话历史中查找 ToolResponseMessage 来获取工具执行结果
+        for (org.springframework.ai.chat.messages.Message message : result.conversationHistory()) {
+            if (message instanceof org.springframework.ai.chat.messages.ToolResponseMessage) {
+                org.springframework.ai.chat.messages.ToolResponseMessage toolResponseMsg = 
+                    (org.springframework.ai.chat.messages.ToolResponseMessage) message;
+                
+                toolResponseMsg.getToolResponses().forEach(toolResponse -> {
+                    String toolName = toolResponse.name();
+                    String responseData = toolResponse.responseData();
+                    logger.info("发送工具执行结果到前端: {}, 结果: {}", toolName, responseData);
+                    
+                    // 发送包含结果的工具调用响应
+                    com.kimi.agent.model.ChatResponse resultResponse = 
+                        com.kimi.agent.model.ChatResponse.toolCallResult(toolName, null, responseData, sessionId);
+                    callback.accept(resultResponse);
+                });
+            }
+        }
     }
 }
