@@ -12,6 +12,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -71,50 +72,57 @@ public class ObservingToolCallingManager implements ToolCallingManager {
         Consumer<com.kimi.agent.model.ChatResponse> callback = CALLBACK_HOLDER.get();
         String sessionId = SESSION_ID_HOLDER.get();
 
-        // 在工具调用前，发送思考内容和工具调用信息
-        if (callback != null && sessionId != null && chatResponse.getResult() != null) {
-            AssistantMessage assistantMessage = (AssistantMessage) chatResponse.getResult().getOutput();
-            
-            // 发送思考内容
-            String content = assistantMessage.getText();
-            if (content != null && !content.isEmpty()) {
-                logger.info("发送思考内容到前端: {}", content);
-                callback.accept(com.kimi.agent.model.ChatResponse.thinking(content, sessionId));
-            }
-            
-            // 发送工具调用信息（包含参数）
-            if (assistantMessage.hasToolCalls()) {
-                assistantMessage.getToolCalls().forEach(toolCall -> {
-                    String toolName = toolCall.name();
-                    String arguments = toolCall.arguments();
-                    
-                    // 将参数中的占位符 sessionId 替换为真实的会话 ID
-                    if (arguments != null && arguments.contains("sessionId")) {
-                        arguments = arguments.replaceAll("\"sessionId\"\s*:\s*\"[^\"]*\"", "\"sessionId\": \"" + sessionId + "\"");
-                    }
-                    
-                    logger.info("发送工具调用信息到前端: {}, 参数: {}", toolName, arguments);
-                    
-                    // 发送包含参数的工具调用响应
-                    com.kimi.agent.model.ChatResponse toolResponse = 
-                        com.kimi.agent.model.ChatResponse.toolCallResult(toolName, arguments, null, sessionId);
-                    callback.accept(toolResponse);
-                });
-            }
+        // 在工具调用前，设置工具上下文（包含 SessionId）
+        if (sessionId != null) {
+            Map<String, Object> context = ToolContextHolder.createDefaultContext(sessionId);
+            ToolContextHolder.setContext(context);
+            logger.debug("设置工具执行上下文 - SessionId: {}", sessionId);
         }
 
-        // 调用委托的工具执行逻辑
-        ToolExecutionResult result = delegate.executeToolCalls(prompt, chatResponse);
-        
-        logger.info("工具执行完成，返回对话历史消息数: {}", 
-                result.conversationHistory().size());
-        
-        // 从对话历史中提取工具执行结果
-        if (callback != null && sessionId != null) {
-            extractAndSendToolResults(result, sessionId, callback);
+        try {
+            // 在工具调用前，发送思考内容和工具调用信息
+            if (callback != null && sessionId != null && chatResponse.getResult() != null) {
+                AssistantMessage assistantMessage = (AssistantMessage) chatResponse.getResult().getOutput();
+                
+                // 发送思考内容
+                String content = assistantMessage.getText();
+                if (content != null && !content.isEmpty()) {
+                    logger.info("发送思考内容到前端: {}", content);
+                    callback.accept(com.kimi.agent.model.ChatResponse.thinking(content, sessionId));
+                }
+                
+                // 发送工具调用信息（包含参数）
+                if (assistantMessage.hasToolCalls()) {
+                    assistantMessage.getToolCalls().forEach(toolCall -> {
+                        String toolName = toolCall.name();
+                        String arguments = toolCall.arguments();
+                        
+                        logger.info("发送工具调用信息到前端: {}, 参数: {}", toolName, arguments);
+                        
+                        // 发送包含参数的工具调用响应
+                        com.kimi.agent.model.ChatResponse toolResponse = 
+                            com.kimi.agent.model.ChatResponse.toolCallResult(toolName, arguments, null, sessionId);
+                        callback.accept(toolResponse);
+                    });
+                }
+            }
+
+            // 调用委托的工具执行逻辑
+            ToolExecutionResult result = delegate.executeToolCalls(prompt, chatResponse);
+            
+            logger.info("工具执行完成，返回对话历史消息数: {}", 
+                    result.conversationHistory().size());
+            
+            // 从对话历史中提取工具执行结果
+            if (callback != null && sessionId != null) {
+                extractAndSendToolResults(result, sessionId, callback);
+            }
+            
+            return result;
+        } finally {
+            // 清除工具上下文
+            ToolContextHolder.clear();
         }
-        
-        return result;
     }
     
     /**

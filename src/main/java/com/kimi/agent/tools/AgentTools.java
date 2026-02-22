@@ -1,5 +1,8 @@
 package com.kimi.agent.tools;
 
+import com.kimi.agent.tool.ToolContextHolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -9,11 +12,14 @@ import java.util.Map;
 /**
  * 智能助手工具类
  * 使用 @Tool 注解定义工具方法
+ * SessionId 等内部参数通过 ToolContextHolder (ThreadLocal) 传递，不暴露给 AI 模型
  * 
  * @author Kimi
  */
 @Component
 public class AgentTools {
+
+    private static final Logger logger = LoggerFactory.getLogger(AgentTools.class);
 
     private final LocationTool locationTool;
     private final WeatherTool weatherTool;
@@ -27,15 +33,23 @@ public class AgentTools {
 
     /**
      * 获取用户当前所在城市
+     * SessionId 通过 ToolContextHolder 获取，不暴露给模型
      * 
-     * @param sessionId 会话ID
      * @return 用户所在城市（北京、上海或杭州）
      */
-    @Tool(description = "查询用户当前所在的城市位置。根据会话ID返回用户所在城市，支持北京、上海、杭州。")
-    public String getUserLocation(
-            @ToolParam(description = "会话ID，用于确定用户位置") String sessionId) {
-        Map<String, Object> params = Map.of("sessionId", sessionId != null ? sessionId : "default");
-        Object result = locationTool.execute(params, sessionId != null ? sessionId : "default");
+    @Tool(description = "查询用户当前所在的城市位置。支持北京、上海、杭州。")
+    public String getUserLocation() {
+        // 从 ThreadLocal 获取真实的 SessionId
+        String sessionId = ToolContextHolder.getSessionId();
+        if (sessionId == null) {
+            sessionId = "default";
+            logger.warn("未找到 SessionId，使用默认值");
+        }
+        
+        logger.info("获取用户位置，SessionId: {}", sessionId);
+        
+        Map<String, Object> params = Map.of("sessionId", sessionId);
+        Object result = locationTool.execute(params, sessionId);
         return result != null ? result.toString() : "未知";
     }
 
