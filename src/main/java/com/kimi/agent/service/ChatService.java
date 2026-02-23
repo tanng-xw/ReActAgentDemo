@@ -85,7 +85,7 @@ public class ChatService {
                     .setChatSession(session);
             
             ToolContextHolder.setContext(toolContext);
-            ObservingToolCallingManager.setCallback(responseConsumer);
+            ObservingToolCallingManager.setCallback(responseConsumer, sessionId);
 
             StringBuilder contentBuilder = new StringBuilder();
             try {
@@ -153,12 +153,14 @@ public class ChatService {
                                                 (org.springframework.ai.chat.messages.AssistantMessage) output;
                                             if (assistantMsg.hasToolCalls()) {
                                                 assistantMsg.getToolCalls().forEach(toolCall -> {
-                                                    // 发送工具调用信息
+                                                    // 发送工具调用信息（参数）
+                                                    logger.info("流式模式检测到工具调用: {}", toolCall.name());
                                                     responseConsumer.accept(com.kimi.agent.model.ChatResponse.toolCallResult(
                                                             toolCall.name(), toolCall.arguments(), null, sessionId));
                                                 });
                                             }
                                         }
+                                        // 注意：工具调用结果由 ObservingToolCallingManager.executeToolCalls 处理
                                     }
                                 },
                                 error -> {
@@ -186,11 +188,17 @@ public class ChatService {
                                 }
                         );
 
-            } finally {
-                // 确保清除上下文（如果上面未完成）
+            } catch (Exception e) {
+                // 同步模式下的异常处理
+                logger.error("处理消息时发生错误", e);
+                responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
                 ToolContextHolder.clear();
                 ObservingToolCallingManager.clearCallback();
+                return;
             }
+            
+            // 流式模式下，清除操作在 onComplete 回调中进行
+            // 不要在这里清除，否则回调会在流式完成前被清除
 
         } catch (Exception e) {
             logger.error("处理消息时发生错误", e);

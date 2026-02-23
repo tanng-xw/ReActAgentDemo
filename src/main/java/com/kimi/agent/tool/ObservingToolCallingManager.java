@@ -32,6 +32,10 @@ public class ObservingToolCallingManager implements ToolCallingManager {
 
     /** ThreadLocal 存储回调函数 */
     private static final ThreadLocal<Consumer<com.kimi.agent.model.ChatResponse>> CALLBACK_HOLDER = new ThreadLocal<>();
+    
+    /** 全局回调存储（用于流式模式，跨线程访问） */
+    private static volatile Consumer<com.kimi.agent.model.ChatResponse> globalCallback = null;
+    private static volatile String globalSessionId = null;
 
     /** 委托的 ToolCallingManager */
     private final ToolCallingManager delegate;
@@ -49,7 +53,21 @@ public class ObservingToolCallingManager implements ToolCallingManager {
      */
     public static void setCallback(Consumer<com.kimi.agent.model.ChatResponse> callback) {
         CALLBACK_HOLDER.set(callback);
+        globalCallback = callback;
         logger.debug("设置回调函数");
+    }
+    
+    /**
+     * 设置回调函数和会话ID（用于流式模式）
+     * 
+     * @param callback 响应回调
+     * @param sessionId 会话ID
+     */
+    public static void setCallback(Consumer<com.kimi.agent.model.ChatResponse> callback, String sessionId) {
+        CALLBACK_HOLDER.set(callback);
+        globalCallback = callback;
+        globalSessionId = sessionId;
+        logger.debug("设置回调函数和会话ID: {}", sessionId);
     }
 
     /**
@@ -57,6 +75,8 @@ public class ObservingToolCallingManager implements ToolCallingManager {
      */
     public static void clearCallback() {
         CALLBACK_HOLDER.remove();
+        globalCallback = null;
+        globalSessionId = null;
         logger.debug("清除回调函数");
     }
 
@@ -67,10 +87,26 @@ public class ObservingToolCallingManager implements ToolCallingManager {
 
     @Override
     public ToolExecutionResult executeToolCalls(Prompt prompt, org.springframework.ai.chat.model.ChatResponse chatResponse) {
-        Consumer<com.kimi.agent.model.ChatResponse> callback = CALLBACK_HOLDER.get();
+        // 首先尝试从 ThreadLocal 获取，如果获取不到则使用全局变量（流式模式）
+        Consumer<com.kimi.agent.model.ChatResponse> callbackHolder = CALLBACK_HOLDER.get();
+        if (callbackHolder == null) {
+            callbackHolder = globalCallback;
+            logger.debug("从全局变量获取回调函数");
+        }
+        final Consumer<com.kimi.agent.model.ChatResponse> callback = callbackHolder;
+        
         ToolContext context = ToolContextHolder.getContext();
-        String sessionId = context != null ? context.getSessionId() : "unknown";
+        final String sessionId;
+        if (context != null) {
+            sessionId = context.getSessionId();
+        } else if (globalSessionId != null) {
+            sessionId = globalSessionId;
+        } else {
+            sessionId = "unknown";
+        }
         ChatSession chatSession = context != null ? context.getChatSession() : null;
+        
+        logger.info("executeToolCalls - 会话ID: {}, 回调函数是否存在: {}", sessionId, callback != null);
 
         // 记录当前轮次的工具调用，用于后续匹配结果
         List<ToolCallInfo> currentToolCalls = new ArrayList<>();
