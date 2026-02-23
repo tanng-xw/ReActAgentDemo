@@ -1,12 +1,16 @@
 package com.kimi.agent.config;
 
+import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ClientHttpRequest;
+import org.springframework.http.client.reactive.ClientHttpRequestDecorator;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.BodyInserter;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
@@ -17,6 +21,7 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,45 +45,101 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
         String requestId = UUID.randomUUID().toString().substring(0, 8);
         String timestamp = LocalDateTime.now().format(formatter);
         
-        // 记录请求
-        logRequest(timestamp, requestId, request);
+        // 创建请求体捕获器
+        RequestBodyCapture bodyCapture = new RequestBodyCapture();
         
-        // 执行请求并捕获响应体
-        return next.exchange(request)
-                .flatMap(response -> {
-                    // 检查是否是 SSE 流式响应
-                    MediaType contentType = response.headers().contentType().orElse(null);
-                    boolean isStreaming = contentType != null && 
-                            (contentType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM) ||
-                             contentType.toString().contains("stream"));
-                    
-                    if (isStreaming) {
-                        // 流式响应：记录部分样本然后继续
-                        return logStreamingResponse(timestamp, requestId, response);
-                    } else {
-                        // 普通响应：完整记录
-                        return logNormalResponse(timestamp, requestId, response);
-                    }
-                });
+        // 包装请求以捕获请求体
+        ClientRequest wrappedRequest = wrapRequest(request, bodyCapture);
+        
+        // 执行请求
+        return next.exchange(wrappedRequest)
+                .doOnSuccess(response -> {
+                    // 请求成功，记录请求体（此时应该已经写入完成）
+                    String body = bodyCapture.getBody();
+                    logRequest(timestamp, requestId, request, body);
+                })
+                .doOnError(error -> {
+                    // 请求失败，仍然记录请求
+                    String body = bodyCapture.getBody();
+                    logRequest(timestamp, requestId, request, body);
+                })
+                .flatMap(response -> captureResponse(response, timestamp, requestId));
     }
 
     /**
-     * 记录流式响应（记录样本然后继续流）
+     * 包装请求以捕获请求体
      */
-    private Mono<ClientResponse> logStreamingResponse(String timestamp, String requestId, ClientResponse response) {
-        // 缓存所有 DataBuffer
+    private ClientRequest wrapRequest(ClientRequest request, RequestBodyCapture capture) {
+        BodyInserter<?, ? super ClientHttpRequest> originalBodyInserter = request.body();
+        
+        BodyInserter<?, ? super ClientHttpRequest> wrappedBodyInserter = (outputMessage, context) -> {
+            ClientHttpRequest decoratedRequest = new ClientHttpRequestDecorator(outputMessage) {
+                @Override
+                public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
+                    return super.writeWith(Flux.from(body)
+                            .map(buffer -> {
+                                // 捕获 buffer 内容
+                                byte[] bytes = new byte[buffer.readableByteCount()];
+                                buffer.read(bytes);
+                                capture.addChunk(bytes);
+                                // 返回新的 buffer
+                                return bufferFactory.wrap(bytes);
+                            }));
+                }
+                
+                @Override
+                public Mono<Void> writeAndFlushWith(Publisher<? extends Publisher<? extends DataBuffer>> body) {
+                    return super.writeAndFlushWith(Flux.from(body)
+                            .map(publisher -> Flux.from(publisher)
+                                    .map(buffer -> {
+                                        byte[] bytes = new byte[buffer.readableByteCount()];
+                                        buffer.read(bytes);
+                                        capture.addChunk(bytes);
+                                        return bufferFactory.wrap(bytes);
+                                    })));
+                }
+            };
+            
+            return originalBodyInserter.insert(decoratedRequest, context);
+        };
+        
+        return ClientRequest.from(request)
+                .body(wrappedBodyInserter)
+                .build();
+    }
+
+    /**
+     * 捕获响应体
+     */
+    private Mono<ClientResponse> captureResponse(ClientResponse response, String timestamp, String requestId) {
+        MediaType contentType = response.headers().contentType().orElse(null);
+        boolean isStreaming = contentType != null && 
+                (contentType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM) ||
+                 contentType.toString().contains("stream"));
+        
+        if (isStreaming) {
+            return captureStreamingResponse(response, timestamp, requestId);
+        } else {
+            return captureNormalResponse(response, timestamp, requestId);
+        }
+    }
+
+    /**
+     * 捕获流式响应
+     */
+    private Mono<ClientResponse> captureStreamingResponse(ClientResponse response, String timestamp, String requestId) {
+        List<BufferHolder> holders = new ArrayList<>();
+        
         return response.bodyToFlux(DataBuffer.class)
                 .map(buffer -> {
-                    // 复制 buffer 以便后续使用
                     byte[] bytes = new byte[buffer.readableByteCount()];
                     buffer.read(bytes);
                     DataBuffer copy = bufferFactory.wrap(bytes);
                     DataBufferUtils.release(buffer);
-                    return new BufferHolder(bytes, copy);
+                    holders.add(new BufferHolder(bytes, copy));
+                    return copy;
                 })
-                .collectList()
-                .map(holders -> {
-                    // 构建日志内容
+                .then(Mono.defer(() -> {
                     StringBuilder bodyBuilder = new StringBuilder();
                     int totalSize = 0;
                     for (BufferHolder holder : holders) {
@@ -91,16 +152,14 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
                     boolean truncated = totalSize > MAX_BODY_LENGTH;
                     logResponse(timestamp, requestId, response, bodyBuilder.toString(), truncated);
                     
-                    // 重建 Flux<DataBuffer> 用于后续处理
                     Flux<DataBuffer> bodyFlux = Flux.fromIterable(holders)
                             .map(h -> h.buffer);
                     
-                    // 重建响应
-                    return ClientResponse.create(response.statusCode())
+                    return Mono.just(ClientResponse.create(response.statusCode())
                             .headers(headers -> headers.addAll(response.headers().asHttpHeaders()))
                             .body(bodyFlux)
-                            .build();
-                })
+                            .build());
+                }))
                 .onErrorResume(e -> {
                     log.warn("Failed to capture streaming response: {}", e.getMessage());
                     logResponse(timestamp, requestId, response, null, false);
@@ -109,27 +168,24 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     }
 
     /**
-     * 记录普通响应
+     * 捕获普通响应
      */
-    private Mono<ClientResponse> logNormalResponse(String timestamp, String requestId, ClientResponse response) {
+    private Mono<ClientResponse> captureNormalResponse(ClientResponse response, String timestamp, String requestId) {
         return response.bodyToMono(DataBuffer.class)
-                .map(buffer -> {
+                .defaultIfEmpty(bufferFactory.wrap(new byte[0]))
+                .flatMap(buffer -> {
                     byte[] bytes = new byte[buffer.readableByteCount()];
                     buffer.read(bytes);
                     DataBufferUtils.release(buffer);
-                    return bytes;
-                })
-                .defaultIfEmpty(new byte[0])
-                .map(bytes -> {
-                    String body = new String(bytes, StandardCharsets.UTF_8);
-                    logResponse(timestamp, requestId, response, body, false);
                     
-                    // 重建响应
+                    String body = new String(bytes, StandardCharsets.UTF_8);
+                    logResponse(timestamp, requestId, response, body.isEmpty() ? null : body, false);
+                    
                     DataBuffer newBuffer = bufferFactory.wrap(bytes);
-                    return ClientResponse.create(response.statusCode())
+                    return Mono.just(ClientResponse.create(response.statusCode())
                             .headers(headers -> headers.addAll(response.headers().asHttpHeaders()))
                             .body(Flux.just(newBuffer))
-                            .build();
+                            .build());
                 })
                 .onErrorResume(e -> {
                     log.warn("Failed to capture response body: {}", e.getMessage());
@@ -141,7 +197,7 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     /**
      * 记录请求信息
      */
-    private void logRequest(String timestamp, String requestId, ClientRequest request) {
+    private void logRequest(String timestamp, String requestId, ClientRequest request, String body) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n");
         sb.append("╔═══════════════════════════════════════════════════════════════════════════════\n");
@@ -156,6 +212,13 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
                     : String.join(", ", values);
             sb.append("║   ").append(name).append(": ").append(value).append("\n");
         });
+        
+        if (body != null && !body.isEmpty()) {
+            sb.append("╠═══════════════════════════════════════════════════════════════════════════════\n");
+            sb.append("║ Body (JSON):\n");
+            sb.append(formatJsonBody(body)).append("\n");
+        }
+        
         sb.append("╚═══════════════════════════════════════════════════════════════════════════════");
         
         String logMessage = sb.toString();
@@ -197,7 +260,7 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     }
 
     /**
-     * 格式化 JSON 体，添加行前缀
+     * 格式化 JSON 体
      */
     private String formatJsonBody(String json) {
         if (json == null || json.isEmpty()) {
@@ -218,7 +281,30 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     }
 
     /**
-     * 内部类：持有原始字节和可重用的 DataBuffer
+     * 请求体捕获器
+     */
+    private static class RequestBodyCapture {
+        private final List<byte[]> chunks = new ArrayList<>();
+        
+        synchronized void addChunk(byte[] bytes) {
+            chunks.add(bytes);
+        }
+        
+        synchronized String getBody() {
+            if (chunks.isEmpty()) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (byte[] chunk : chunks) {
+                sb.append(new String(chunk, StandardCharsets.UTF_8));
+            }
+            String body = sb.toString();
+            return body.isEmpty() ? null : body;
+        }
+    }
+
+    /**
+     * Buffer 持有者
      */
     private static class BufferHolder {
         final byte[] bytes;

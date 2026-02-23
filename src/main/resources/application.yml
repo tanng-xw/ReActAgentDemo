@@ -14,8 +14,8 @@ spring:
 
 logging:
   level:
-    com.kimi.agent: DEBUG
-    org.springframework.ai: DEBUG
+    com.kimi.agent: INFO
+    org.springframework.ai: INFO
     com: ERROR
     org: ERROR
   file:
