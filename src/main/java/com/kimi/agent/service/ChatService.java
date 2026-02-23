@@ -97,6 +97,9 @@ public class ChatService {
                 
                 // Spring AI 的 stream() 返回 StreamResponseSpec，我们需要订阅它
                 // 使用 chatResponse() 获取完整响应，包括工具调用信息
+                // 追踪已发送的思考内容长度，避免重复发送
+                final int[] lastSentThinkingLength = {0};
+                
                 chatClient.prompt()
                         .system(buildSystemPrompt())
                         .messages(historyMessages)
@@ -109,7 +112,6 @@ public class ChatService {
                                     if (chatResponse.getResult() != null && chatResponse.getResult().getOutput() != null) {
                                         String chunk = chatResponse.getResult().getOutput().getText();
                                         if (chunk != null && !chunk.isEmpty()) {
-                                            // 在添加到 contentBuilder 之前，先检查是否是思考过程
                                             String currentContent = contentBuilder.toString();
                                             int currentAnswerIndex = currentContent.indexOf(FINAL_ANSWER_PREFIX);
                                             
@@ -120,11 +122,13 @@ public class ChatService {
                                             if (newAnswerIndex >= 0) {
                                                 // 已经收到 "回答：" 标记
                                                 if (currentAnswerIndex < 0) {
-                                                    // 这是第一次收到 "回答：" 标记
-                                                    // 发送思考过程（"回答："之前的内容）
+                                                    // 第一次收到 "回答："，发送之前的思考内容
                                                     String thinkingContent = newContent.substring(0, newAnswerIndex).trim();
-                                                    if (!thinkingContent.isEmpty()) {
-                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking(thinkingContent, sessionId));
+                                                    if (!thinkingContent.isEmpty() && thinkingContent.length() > lastSentThinkingLength[0]) {
+                                                        // 只发送新增的思考内容
+                                                        String newThinking = thinkingContent.substring(lastSentThinkingLength[0]);
+                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking(newThinking, sessionId));
+                                                        lastSentThinkingLength[0] = thinkingContent.length();
                                                     }
                                                     // 发送 "回答：" 之后的内容
                                                     String answerContent = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
@@ -132,7 +136,7 @@ public class ChatService {
                                                         responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(answerContent, sessionId));
                                                     }
                                                 } else {
-                                                    // 继续发送新增的 answer 内容
+                                                    // 继续发送 answer 内容
                                                     int alreadySent = currentContent.length() - currentAnswerIndex - FINAL_ANSWER_PREFIX.length();
                                                     String answerPart = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
                                                     if (alreadySent >= 0 && alreadySent < answerPart.length()) {
@@ -142,12 +146,18 @@ public class ChatService {
                                                         }
                                                     }
                                                 }
+                                            } else {
+                                                // 还没有收到 "回答："，作为思考内容发送
+                                                // 这种情况发生在工具调用前的推理过程
+                                                if (newContent.length() > lastSentThinkingLength[0]) {
+                                                    String newThinking = newContent.substring(lastSentThinkingLength[0]);
+                                                    responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking(newThinking, sessionId));
+                                                    lastSentThinkingLength[0] = newContent.length();
+                                                }
                                             }
-                                            // 如果还没有收到 "回答："，暂时不发送（等待完整思考过程）
                                         }
                                         
                                         // 注意：工具调用由 ObservingToolCallingManager.executeToolCalls 统一处理
-                                        // 包括发送工具调用信息和结果到前端
                                     }
                                 },
                                 error -> {
