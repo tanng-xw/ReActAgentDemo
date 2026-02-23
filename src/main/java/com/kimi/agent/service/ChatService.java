@@ -125,20 +125,22 @@ public class ChatService {
                                         if (chunk != null && !chunk.isEmpty()) {
                                             String currentContent = contentBuilder.toString();
                                             int currentAnswerIndex = currentContent.indexOf(FINAL_ANSWER_PREFIX);
+                                            int currentAnswerIndexAlt = currentContent.indexOf(FINAL_ANSWER_PREFIX_ALT);
+                                            int effectiveCurrentIndex = (currentAnswerIndex >= 0) ? currentAnswerIndex : currentAnswerIndexAlt;
                                             
                                             contentBuilder.append(chunk);
                                             String newContent = contentBuilder.toString();
                                             int newAnswerIndex = newContent.indexOf(FINAL_ANSWER_PREFIX);
+                                            int newAnswerIndexAlt = newContent.indexOf(FINAL_ANSWER_PREFIX_ALT);
                                             
                                             // 检查"回答："或"回答\n"标记
-                                            int newAnswerIndexAlt = newContent.indexOf(FINAL_ANSWER_PREFIX_ALT);
                                             boolean useAltPrefix = newAnswerIndex < 0 && newAnswerIndexAlt >= 0;
                                             int effectiveNewIndex = useAltPrefix ? newAnswerIndexAlt : newAnswerIndex;
                                             String effectivePrefix = useAltPrefix ? FINAL_ANSWER_PREFIX_ALT : FINAL_ANSWER_PREFIX;
                                             
                                             if (effectiveNewIndex >= 0) {
                                                 // 已经收到 "回答：" 或 "回答\n" 标记
-                                                if (currentAnswerIndex < 0) {
+                                                if (effectiveCurrentIndex < 0) {
                                                     // 第一次收到标记，发送之前的思考内容
                                                     String thinkingContent = newContent.substring(0, effectiveNewIndex).trim();
                                                     if (!thinkingContent.isEmpty() && thinkingContent.length() > lastSentThinkingLength[0]) {
@@ -154,7 +156,8 @@ public class ChatService {
                                                     }
                                                 } else {
                                                     // 继续发送 answer 内容
-                                                    int alreadySent = currentContent.length() - currentAnswerIndex - FINAL_ANSWER_PREFIX.length();
+                                                    int alreadySent = currentContent.length() - effectiveCurrentIndex - 
+                                                            (currentAnswerIndex >= 0 ? FINAL_ANSWER_PREFIX.length() : FINAL_ANSWER_PREFIX_ALT.length());
                                                     String answerPart = newContent.substring(effectiveNewIndex + effectivePrefix.length());
                                                     if (alreadySent >= 0 && alreadySent < answerPart.length()) {
                                                         String newChunk = answerPart.substring(alreadySent);
