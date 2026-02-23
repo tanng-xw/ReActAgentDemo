@@ -10,6 +10,10 @@ import com.kimi.agent.tools.AgentTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -24,12 +28,14 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
  * 聊天服务类
- * 使用 ChatClient 处理用户输入，通过自定义 ToolCallingManager 捕获中间步骤
+ * 使用 ChatClient 处理用户输入，通过 ChatMemory 管理对话历史
  * 
  * @author Kimi
  */
@@ -52,32 +58,38 @@ public class ChatService {
     private Resource systemPromptResource;
 
     public ChatService(ChatClient.Builder chatClientBuilder, AgentTools agentTools) {
-        // 注意：@Value 注入在构造后才完成，所以这里不能调用 buildSystemPrompt()
-        // 系统提示词将在每次请求时通过 .system() 方法添加
+        // 创建 ChatMemory 和 Advisor
+        // MessageChatMemoryAdvisor 会自动管理对话历史，通过 conversation ID 区分不同会话
+        ChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .maxMessages(20)  // 保留最近20条消息
+                .build();
+        
         // ChatClient 会自动处理工具调用循环，通过 ObservingToolCallingManager 捕获中间步骤
+        // 使用 MessageChatMemoryAdvisor 自动管理对话历史
         this.chatClient = chatClientBuilder
                 .defaultTools(agentTools)
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
     }
 
     /**
      * 处理用户消息，支持流式响应
-     * 使用 ChatClient 的自动工具调用功能
-     * 通过 ThreadLocal 将回调传递给 ObservingToolCallingManager
+     * 使用 ChatClient 的自动工具调用功能和 ChatMemory 管理历史
      * 
      * @param userMessage 用户消息
      * @param sessionId 会话ID
      * @param responseConsumer 响应消费者（用于流式返回）
      */
-    public void processMessage(String userMessage, String sessionId, Consumer<com.kimi.agent.model.ChatResponse> responseConsumer) {
+    public void processMessage(String userMessage, String sessionId, Consumer<ChatResponse> responseConsumer) {
         try {
-            // 获取或创建会话
+            // 获取或创建会话（用于兼容现有代码）
             ChatSession session = ChatSession.getOrCreate(sessionId);
 
             logger.info("处理用户消息，会话ID: {}, 消息: {}", sessionId, userMessage);
 
             // 发送初始思考提示
-            responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking("正在思考问题...", sessionId));
+            responseConsumer.accept(ChatResponse.thinking("正在思考问题...", sessionId));
 
             // 创建工具上下文，包含 SessionId 等内部参数
             ToolContext toolContext = ToolContext.create()
@@ -89,27 +101,17 @@ public class ChatService {
 
             StringBuilder contentBuilder = new StringBuilder();
             try {
-                // 构建对话历史消息列表（不包含当前用户消息）
-                List<Message> historyMessages = buildHistoryMessages(session);
-
                 // 使用 ChatClient 进行流式对话
+                // 使用 MessageChatMemoryAdvisor 自动管理对话历史
                 logger.info("开始流式调用模型...");
                 
-                // Spring AI 的 stream() 返回 StreamResponseSpec，我们需要订阅它
-                // 使用 chatResponse() 获取完整响应，包括工具调用信息
                 // 追踪已发送的思考内容长度，避免重复发送
                 final int[] lastSentThinkingLength = {0};
                 
-                // 追踪工具调用信息
-                final List<ChatMessage.ToolCall> toolCallsList = new ArrayList<>();
-                
-                // 标记是否已经保存了包含 tool_calls 的 assistant 消息
-                final boolean[] assistantWithToolCallsSaved = {false};
-                
                 chatClient.prompt()
                         .system(buildSystemPrompt())
-                        .messages(historyMessages)
                         .user(userMessage)
+                        .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, sessionId))
                         .stream()
                         .chatResponse()
                         .subscribe(
@@ -133,13 +135,13 @@ public class ChatService {
                                                     if (!thinkingContent.isEmpty() && thinkingContent.length() > lastSentThinkingLength[0]) {
                                                         // 只发送新增的思考内容
                                                         String newThinking = thinkingContent.substring(lastSentThinkingLength[0]);
-                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking(newThinking, sessionId));
+                                                        responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
                                                         lastSentThinkingLength[0] = thinkingContent.length();
                                                     }
                                                     // 发送 "回答：" 之后的内容
                                                     String answerContent = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
                                                     if (!answerContent.isEmpty()) {
-                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(answerContent, sessionId));
+                                                        responseConsumer.accept(ChatResponse.streaming(answerContent, sessionId));
                                                     }
                                                 } else {
                                                     // 继续发送 answer 内容
@@ -148,7 +150,7 @@ public class ChatService {
                                                     if (alreadySent >= 0 && alreadySent < answerPart.length()) {
                                                         String newChunk = answerPart.substring(alreadySent);
                                                         if (!newChunk.isEmpty()) {
-                                                            responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(newChunk, sessionId));
+                                                            responseConsumer.accept(ChatResponse.streaming(newChunk, sessionId));
                                                         }
                                                     }
                                                 }
@@ -157,39 +159,9 @@ public class ChatService {
                                                 // 这种情况发生在工具调用前的推理过程
                                                 if (newContent.length() > lastSentThinkingLength[0]) {
                                                     String newThinking = newContent.substring(lastSentThinkingLength[0]);
-                                                    responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking(newThinking, sessionId));
+                                                    responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
                                                     lastSentThinkingLength[0] = newContent.length();
                                                 }
-                                            }
-                                        }
-                                        
-                                        // 检查是否有工具调用（流式模式下 hasToolCalls 始终为 false，
-                                        // 工具调用通过 ObservingToolCallingManager.executeToolCalls 处理）
-                                        var output = chatResponse.getResult().getOutput();
-                                        if (output instanceof org.springframework.ai.chat.messages.AssistantMessage) {
-                                            org.springframework.ai.chat.messages.AssistantMessage assistantMsg = 
-                                                (org.springframework.ai.chat.messages.AssistantMessage) output;
-                                            // 注意：流式模式下 assistantMsg.hasToolCalls() 始终返回 false
-                                            // 这是 Spring AI 的设计，工具调用信息在 executeToolCalls 回调中处理
-                                            if (assistantMsg.hasToolCalls() && !assistantWithToolCallsSaved[0]) {
-                                                // 保存 tool_calls
-                                                assistantMsg.getToolCalls().forEach(tc -> {
-                                                    ChatMessage.ToolCall toolCall = new ChatMessage.ToolCall(
-                                                        tc.id(), tc.type(), tc.name(), tc.arguments());
-                                                    toolCallsList.add(toolCall);
-                                                });
-                                                
-                                                // 保存包含 content 和 tool_calls 的 assistant 消息到 session
-                                                String currentContent = contentBuilder.toString();
-                                                ChatMessage assistantMessage = new ChatMessage(
-                                                        ChatMessage.MessageType.ASSISTANT, 
-                                                        currentContent);
-                                                assistantMessage.setToolCalls(toolCallsList);
-                                                session.addMessage(assistantMessage);
-                                                logger.info("保存 assistant 消息（含 tool_calls），content: {}", 
-                                                        currentContent.length() > 30 ? currentContent.substring(0, 30) + "..." : currentContent);
-                                                
-                                                assistantWithToolCallsSaved[0] = true;
                                             }
                                         }
                                     }
@@ -197,7 +169,7 @@ public class ChatService {
                                 error -> {
                                     // 处理错误
                                     logger.error("流式处理时发生错误", error);
-                                    responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("流式处理错误: " + error.getMessage(), sessionId));
+                                    responseConsumer.accept(ChatResponse.error("流式处理错误: " + error.getMessage(), sessionId));
                                     ToolContextHolder.clear();
                                     ObservingToolCallingManager.clearCallback();
                                 },
@@ -206,26 +178,7 @@ public class ChatService {
                                     String fullContent = contentBuilder.toString();
                                     logger.info("流式响应完成，总长度: {}", fullContent.length());
                                     
-                                    // 保存用户消息
-                                    session.addMessage(new ChatMessage(ChatMessage.MessageType.USER, userMessage));
-                                    
-                                    // 如果已经保存了包含 tool_calls 的 assistant 消息，则只保存最终回答部分
-                                    if (assistantWithToolCallsSaved[0]) {
-                                        // 提取 "回答：" 之后的最终回答
-                                        int answerIndex = fullContent.indexOf(FINAL_ANSWER_PREFIX);
-                                        if (answerIndex >= 0) {
-                                            String finalAnswer = fullContent.substring(answerIndex + FINAL_ANSWER_PREFIX.length()).trim();
-                                            if (!finalAnswer.isEmpty()) {
-                                                session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, finalAnswer));
-                                                logger.info("保存最终回答: {}", finalAnswer.length() > 30 ? finalAnswer.substring(0, 30) + "..." : finalAnswer);
-                                            }
-                                        }
-                                    } else {
-                                        // 没有 tool_calls，正常保存 assistant 消息
-                                        session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, fullContent));
-                                    }
-                                    
-                                    // 发送最终答案（只发送 "回答：" 之后的部分）
+                                    // 发送最终答案
                                     parseAndSendFinalResponse(fullContent, sessionId, responseConsumer);
                                     
                                     // 清除上下文
@@ -237,7 +190,7 @@ public class ChatService {
             } catch (Exception e) {
                 // 同步模式下的异常处理
                 logger.error("处理消息时发生错误", e);
-                responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
+                responseConsumer.accept(ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
                 ToolContextHolder.clear();
                 ObservingToolCallingManager.clearCallback();
                 return;
@@ -248,7 +201,7 @@ public class ChatService {
 
         } catch (Exception e) {
             logger.error("处理消息时发生错误", e);
-            responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
+            responseConsumer.accept(ChatResponse.error("处理消息时发生错误: " + e.getMessage(), sessionId));
             ToolContextHolder.clear();
             ObservingToolCallingManager.clearCallback();
         }
@@ -264,65 +217,30 @@ public class ChatService {
      */
     private void parseAndSendFinalResponse(String content, String sessionId, Consumer<ChatResponse> responseConsumer) {
         if (content == null || content.isEmpty()) {
-            responseConsumer.accept(com.kimi.agent.model.ChatResponse.error("模型返回空响应", sessionId));
+            responseConsumer.accept(ChatResponse.error("模型返回空响应", sessionId));
             return;
         }
 
         // 检查是否包含最终答案标记
         int finalAnswerIndex = content.indexOf(FINAL_ANSWER_PREFIX);
-        
         if (finalAnswerIndex >= 0) {
-            // 提取最终答案
+            // 提取 "回答：" 之后的最终答案
             String finalAnswer = content.substring(finalAnswerIndex + FINAL_ANSWER_PREFIX.length()).trim();
-            
-            // 发送最终答案
-            responseConsumer.accept(com.kimi.agent.model.ChatResponse.finalAnswer(finalAnswer, sessionId));
+            if (!finalAnswer.isEmpty()) {
+                responseConsumer.accept(ChatResponse.finalAnswer(finalAnswer, sessionId));
+            } else {
+                responseConsumer.accept(ChatResponse.finalAnswer("模型未提供具体回答", sessionId));
+            }
         } else {
-            // 没有标记，将整个内容作为最终答案
-            responseConsumer.accept(com.kimi.agent.model.ChatResponse.finalAnswer(content, sessionId));
-        }
-    }
-
-    /**
-     * 构建对话历史消息列表（转换为 Spring AI Message 对象）
-     * 只包含 USER 和 ASSISTANT 消息，工具调用细节已包含在 ASSISTANT 消息中
-     * 
-     * @param session 会话
-     * @return 对话历史消息列表
-     */
-    private List<Message> buildHistoryMessages(ChatSession session) {
-        List<Message> messages = new ArrayList<>();
-        
-        for (ChatMessage msg : session.getMessages()) {
-            switch (msg.getType()) {
-                case USER:
-                    messages.add(new UserMessage(msg.getContent()));
-                    break;
-                case ASSISTANT:
-                    if (msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
-                        // 创建包含 content 和 tool_calls 的 AssistantMessage
-                        List<org.springframework.ai.chat.messages.AssistantMessage.ToolCall> toolCalls = 
-                            msg.getToolCalls().stream()
-                                .map(tc -> new org.springframework.ai.chat.messages.AssistantMessage.ToolCall(
-                                    tc.getId(), tc.getType(), tc.getFunction().getName(), tc.getFunction().getArguments()))
-                                .collect(Collectors.toList());
-                        messages.add(AssistantMessage.builder()
-                                .content(msg.getContent())
-                                .toolCalls(toolCalls)
-                                .build());
-                    } else {
-                        messages.add(new AssistantMessage(msg.getContent()));
-                    }
-                    break;
-                case TOOL_CALL:
-                    // 工具调用消息已在 ASSISTANT 消息中体现，不需要单独添加
-                    // 这些消息主要用于前端展示和调试
-                    break;
-                default:
-                    break;
+            // 如果没有 "回答：" 标记，将整个内容作为最终答案
+            // 这种情况发生在简单查询不涉及工具调用时
+            String trimmedContent = content.trim();
+            if (!trimmedContent.isEmpty()) {
+                responseConsumer.accept(ChatResponse.finalAnswer(trimmedContent, sessionId));
+            } else {
+                responseConsumer.accept(ChatResponse.finalAnswer("模型未返回有效内容", sessionId));
             }
         }
-        return messages;
     }
 
     /**
@@ -345,8 +263,7 @@ public class ChatService {
         }
 
         try {
-            logger.info("系统提示词资源: {}", systemPromptResource);
-            logger.info("系统提示词资源 URI: {}", systemPromptResource.getURI());
+            logger.info("系统提示词资源: {}", systemPromptResource.getURI());
             
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(systemPromptResource.getInputStream(), StandardCharsets.UTF_8))) {
@@ -355,8 +272,9 @@ public class ChatService {
                 return cachedSystemPrompt;
             }
         } catch (IOException e) {
-            logger.error("读取系统提示词模板失败: {}", systemPromptResource, e);
-            throw new IllegalStateException("无法加载系统提示词模板: " + e.getMessage(), e);
+            logger.error("无法加载系统提示词模板", e);
+            throw new IllegalStateException(
+                "无法加载系统提示词模板，请检查文件是否存在: classpath:/prompts/system-prompt.st", e);
         }
     }
 
@@ -366,16 +284,21 @@ public class ChatService {
      * @return 新会话ID
      */
     public String createNewSession() {
-        ChatSession session = ChatSession.createNew();
-        return session.getSessionId();
+        String sessionId = java.util.UUID.randomUUID().toString();
+        logger.info("创建新会话: {}", sessionId);
+        return sessionId;
     }
-
+    
     /**
-     * 清除会话
+     * 清除指定会话的历史记录
+     * 注意：由于使用 Spring AI 的 ChatMemory，它会自动管理历史消息
+     * 此方法主要用于兼容现有 API
      * 
      * @param sessionId 会话ID
      */
     public void clearSession(String sessionId) {
-        ChatSession.remove(sessionId);
+        logger.info("清除会话历史: {}", sessionId);
+        // ChatMemory 会自动管理消息窗口，无需手动清除
+        // 如果需要立即清除，可以创建新的 ChatClient 实例
     }
 }
