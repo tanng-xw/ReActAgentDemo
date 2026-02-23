@@ -1,5 +1,6 @@
 package com.kimi.agent.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kimi.agent.model.ChatRequest;
 import com.kimi.agent.model.ChatResponse;
 import com.kimi.agent.service.ChatService;
@@ -13,7 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 聊天控制器
@@ -32,9 +33,11 @@ public class ChatController {
     private static final long SSE_TIMEOUT = 300000L; // 5分钟
 
     private final ChatService chatService;
+    private final ObjectMapper objectMapper;
 
-    public ChatController(ChatService chatService) {
+    public ChatController(ChatService chatService, ObjectMapper objectMapper) {
         this.chatService = chatService;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -60,16 +63,21 @@ public class ChatController {
         emitter.onTimeout(() -> logger.warn("SSE 连接超时，会话ID: {}", finalSessionId));
         emitter.onError(e -> logger.error("SSE 连接错误，会话ID: {}", finalSessionId, e));
 
-        // 异步处理消息 - 在新线程中处理，避免阻塞
-        new Thread(() -> {
+        // 异步处理消息
+        CompletableFuture.runAsync(() -> {
             try {
                 logger.info("开始处理流式消息，会话ID: {}", finalSessionId);
+                
                 chatService.processMessage(request.getMessage(), finalSessionId, response -> {
                     try {
                         logger.debug("发送SSE消息 - 会话: {}, 类型: {}", finalSessionId, response.getType());
-                        emitter.send(SseEmitter.event()
+                        
+                        // 使用 SseEmitter 发送事件
+                        SseEmitter.SseEventBuilder event = SseEmitter.event()
                                 .name("message")
-                                .data(response));
+                                .data(response);
+                        
+                        emitter.send(event);
                         
                         // 如果是最终答案或错误，完成连接
                         if (response.isDone()) {
@@ -81,6 +89,7 @@ public class ChatController {
                         emitter.completeWithError(e);
                     }
                 });
+                
             } catch (Exception e) {
                 logger.error("处理消息失败", e);
                 try {
@@ -92,7 +101,7 @@ public class ChatController {
                     emitter.completeWithError(ex);
                 }
             }
-        }).start();
+        });
 
         return emitter;
     }

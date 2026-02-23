@@ -1,5 +1,6 @@
 package com.kimi.agent.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kimi.agent.model.ChatRequest;
 import com.kimi.agent.model.ChatResponse;
 import com.kimi.agent.service.ChatService;
@@ -26,7 +27,7 @@ class ChatControllerTest {
     void setUp() {
         // 使用模拟的 ChatService 进行测试
         chatService = new MockChatService();
-        chatController = new ChatController(chatService);
+        chatController = new ChatController(chatService, new ObjectMapper());
     }
 
     @Test

@@ -634,6 +634,8 @@
             
             // 追加内容
             currentStreamingElement.textContent += content;
+            // 强制回流以触发实时渲染
+            currentStreamingElement.offsetHeight;
             scrollToBottom();
         }
 
@@ -656,6 +658,8 @@
             if (lastElement && lastElement.classList.contains('thinking-section') && !lastElement.dataset.completed) {
                 // 追加到现有思考框
                 lastElement.textContent += content;
+                // 强制回流以触发实时渲染
+                lastElement.offsetHeight;
             } else {
                 // 创建新的思考框
                 const thinkingDiv = document.createElement('div');
