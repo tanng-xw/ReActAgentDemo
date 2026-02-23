@@ -146,21 +146,8 @@ public class ChatService {
                                             // 如果还没有收到 "回答："，暂时不发送（等待完整思考过程）
                                         }
                                         
-                                        // 检查是否有工具调用（流式模式下也可能有）
-                                        var output = chatResponse.getResult().getOutput();
-                                        if (output instanceof org.springframework.ai.chat.messages.AssistantMessage) {
-                                            org.springframework.ai.chat.messages.AssistantMessage assistantMsg = 
-                                                (org.springframework.ai.chat.messages.AssistantMessage) output;
-                                            if (assistantMsg.hasToolCalls()) {
-                                                assistantMsg.getToolCalls().forEach(toolCall -> {
-                                                    // 发送工具调用信息（参数）
-                                                    logger.info("流式模式检测到工具调用: {}", toolCall.name());
-                                                    responseConsumer.accept(com.kimi.agent.model.ChatResponse.toolCallResult(
-                                                            toolCall.name(), toolCall.arguments(), null, sessionId));
-                                                });
-                                            }
-                                        }
-                                        // 注意：工具调用结果由 ObservingToolCallingManager.executeToolCalls 处理
+                                        // 注意：工具调用由 ObservingToolCallingManager.executeToolCalls 统一处理
+                                        // 包括发送工具调用信息和结果到前端
                                     }
                                 },
                                 error -> {
