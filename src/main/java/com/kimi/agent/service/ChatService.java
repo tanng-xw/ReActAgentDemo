@@ -177,15 +177,17 @@ public class ChatService {
                                                         newThinking = newThinking.substring(0, newThinking.length() - 2);
                                                         if (!newThinking.isEmpty()) {
                                                             responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
-                                                            lastSentThinkingLength[0] = newContent.length() - 2;
                                                         }
+                                                        // 无论是否发送，都要更新长度（"回答"已处理）
+                                                        lastSentThinkingLength[0] = newContent.length() - 2;
                                                     } else if (newThinking.endsWith("回")) {
                                                         // 如果 newThinking 以 "回" 结尾，可能是 "回答" 的一部分，暂不发送
                                                         newThinking = newThinking.substring(0, newThinking.length() - 1);
                                                         if (!newThinking.isEmpty()) {
                                                             responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
-                                                            lastSentThinkingLength[0] = newContent.length() - 1;
                                                         }
+                                                        // 无论是否发送，都要更新长度（"回"已处理）
+                                                        lastSentThinkingLength[0] = newContent.length() - 1;
                                                     } else {
                                                         responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
                                                         lastSentThinkingLength[0] = newContent.length();
