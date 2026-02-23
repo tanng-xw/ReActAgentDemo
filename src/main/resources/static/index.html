@@ -615,6 +615,9 @@
             document.getElementById('typingIndicator').classList.remove('active');
             
             if (!currentStreamingElement) {
+                // 标记当前思考框为已完成
+                completeCurrentThinking();
+                
                 // 创建新的流式消息框
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message message-assistant';
@@ -644,21 +647,45 @@
             scrollToBottom();
         }
 
-        // 添加思考内容（每次创建新的思考框，按顺序展示）
+        // 当前思考框（用于追加内容）
+        let currentThinkingDiv = null;
+        
+        // 添加思考内容（追加到当前思考框，或创建新的）
         function appendThinking(content) {
             const container = document.getElementById('messagesContainer');
             
-            // 创建新的思考框
-            const thinkingDiv = document.createElement('div');
-            thinkingDiv.className = 'thinking-section';
-            thinkingDiv.textContent = content;
-            container.appendChild(thinkingDiv);
+            // 查找最后一个思考框（如果没有被工具调用或最终答案打断）
+            const lastElement = container.lastElementChild;
+            if (lastElement && lastElement.classList.contains('thinking-section') && !lastElement.dataset.completed) {
+                // 追加到现有思考框
+                lastElement.textContent += content;
+            } else {
+                // 创建新的思考框
+                const thinkingDiv = document.createElement('div');
+                thinkingDiv.className = 'thinking-section';
+                thinkingDiv.textContent = content;
+                container.appendChild(thinkingDiv);
+                currentThinkingDiv = thinkingDiv;
+            }
             scrollToBottom();
+        }
+        
+        // 标记当前思考框为已完成（遇到工具调用或最终答案时调用）
+        function completeCurrentThinking() {
+            const container = document.getElementById('messagesContainer');
+            const lastElement = container.lastElementChild;
+            if (lastElement && lastElement.classList.contains('thinking-section')) {
+                lastElement.dataset.completed = 'true';
+            }
+            currentThinkingDiv = null;
         }
 
         // 添加工具调用消息
         function addToolCallMessage(toolName, toolArguments, toolResult) {
             const container = document.getElementById('messagesContainer');
+            
+            // 标记当前思考框为已完成
+            completeCurrentThinking();
             
             // 查找是否已存在相同工具名称的调用框（用于更新结果）
             const existingToolDiv = Array.from(container.querySelectorAll('.tool-call-section')).find(
@@ -699,6 +726,9 @@
         // 添加最终答案
         function addFinalAnswer(content) {
             const container = document.getElementById('messagesContainer');
+            
+            // 标记当前思考框为已完成
+            completeCurrentThinking();
             
             const answerDiv = document.createElement('div');
             answerDiv.className = 'message message-assistant';
