@@ -96,44 +96,69 @@ public class ChatService {
                 logger.info("开始流式调用模型...");
                 
                 // Spring AI 的 stream() 返回 StreamResponseSpec，我们需要订阅它
+                // 使用 chatResponse() 获取完整响应，包括工具调用信息
                 chatClient.prompt()
                         .system(buildSystemPrompt())
                         .messages(historyMessages)
                         .user(userMessage)
                         .stream()
-                        .content()
+                        .chatResponse()
                         .subscribe(
-                                chunk -> {
-                                    // 处理每个流式响应块
-                                    if (chunk != null && !chunk.isEmpty()) {
-                                        contentBuilder.append(chunk);
-                                        
-                                        // 检查是否已经接收到 "回答：" 标记
-                                        String currentContent = contentBuilder.toString();
-                                        int answerIndex = currentContent.indexOf(FINAL_ANSWER_PREFIX);
-                                        
-                                        if (answerIndex >= 0) {
-                                            // 只发送 "回答：" 之后的内容
-                                            String answerContent = currentContent.substring(answerIndex + FINAL_ANSWER_PREFIX.length());
+                                chatResponse -> {
+                                    // 处理每个流式响应
+                                    if (chatResponse.getResult() != null && chatResponse.getResult().getOutput() != null) {
+                                        String chunk = chatResponse.getResult().getOutput().getText();
+                                        if (chunk != null && !chunk.isEmpty()) {
+                                            // 在添加到 contentBuilder 之前，先检查是否是思考过程
+                                            String currentContent = contentBuilder.toString();
+                                            int currentAnswerIndex = currentContent.indexOf(FINAL_ANSWER_PREFIX);
                                             
-                                            // 计算这次新增的 answer 内容
-                                            int prevAnswerIndex = (contentBuilder.length() - chunk.length() - FINAL_ANSWER_PREFIX.length());
-                                            if (prevAnswerIndex < answerIndex) {
-                                                // 这是第一次收到 "回答：" 之后的 chunk
-                                                // 只发送超出之前内容的部分
-                                                responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(answerContent, sessionId));
-                                            } else {
-                                                // 继续发送新增的 chunk（但只发送属于 answer 的部分）
-                                                int alreadySent = contentBuilder.length() - chunk.length() - answerIndex - FINAL_ANSWER_PREFIX.length();
-                                                if (alreadySent >= 0 && alreadySent < answerContent.length()) {
-                                                    String newChunk = answerContent.substring(alreadySent);
-                                                    if (!newChunk.isEmpty()) {
-                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(newChunk, sessionId));
+                                            contentBuilder.append(chunk);
+                                            String newContent = contentBuilder.toString();
+                                            int newAnswerIndex = newContent.indexOf(FINAL_ANSWER_PREFIX);
+                                            
+                                            if (newAnswerIndex >= 0) {
+                                                // 已经收到 "回答：" 标记
+                                                if (currentAnswerIndex < 0) {
+                                                    // 这是第一次收到 "回答：" 标记
+                                                    // 发送思考过程（"回答："之前的内容）
+                                                    String thinkingContent = newContent.substring(0, newAnswerIndex).trim();
+                                                    if (!thinkingContent.isEmpty()) {
+                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.thinking(thinkingContent, sessionId));
+                                                    }
+                                                    // 发送 "回答：" 之后的内容
+                                                    String answerContent = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
+                                                    if (!answerContent.isEmpty()) {
+                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(answerContent, sessionId));
+                                                    }
+                                                } else {
+                                                    // 继续发送新增的 answer 内容
+                                                    int alreadySent = currentContent.length() - currentAnswerIndex - FINAL_ANSWER_PREFIX.length();
+                                                    String answerPart = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
+                                                    if (alreadySent >= 0 && alreadySent < answerPart.length()) {
+                                                        String newChunk = answerPart.substring(alreadySent);
+                                                        if (!newChunk.isEmpty()) {
+                                                            responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(newChunk, sessionId));
+                                                        }
                                                     }
                                                 }
                                             }
+                                            // 如果还没有收到 "回答："，暂时不发送（等待完整思考过程）
                                         }
-                                        // 如果还没有收到 "回答："，不发送流式内容（思考过程不显示）
+                                        
+                                        // 检查是否有工具调用（流式模式下也可能有）
+                                        var output = chatResponse.getResult().getOutput();
+                                        if (output instanceof org.springframework.ai.chat.messages.AssistantMessage) {
+                                            org.springframework.ai.chat.messages.AssistantMessage assistantMsg = 
+                                                (org.springframework.ai.chat.messages.AssistantMessage) output;
+                                            if (assistantMsg.hasToolCalls()) {
+                                                assistantMsg.getToolCalls().forEach(toolCall -> {
+                                                    // 发送工具调用信息
+                                                    responseConsumer.accept(com.kimi.agent.model.ChatResponse.toolCallResult(
+                                                            toolCall.name(), toolCall.arguments(), null, sessionId));
+                                                });
+                                            }
+                                        }
                                     }
                                 },
                                 error -> {
