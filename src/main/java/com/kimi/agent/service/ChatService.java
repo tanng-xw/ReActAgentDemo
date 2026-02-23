@@ -100,6 +100,12 @@ public class ChatService {
                 // 追踪已发送的思考内容长度，避免重复发送
                 final int[] lastSentThinkingLength = {0};
                 
+                // 追踪工具调用信息
+                final List<ChatMessage.ToolCall> toolCallsList = new ArrayList<>();
+                
+                // 标记是否已经保存了包含 tool_calls 的 assistant 消息
+                final boolean[] assistantWithToolCallsSaved = {false};
+                
                 chatClient.prompt()
                         .system(buildSystemPrompt())
                         .messages(historyMessages)
@@ -157,7 +163,35 @@ public class ChatService {
                                             }
                                         }
                                         
-                                        // 注意：工具调用由 ObservingToolCallingManager.executeToolCalls 统一处理
+                                        // 检查是否有工具调用（流式模式下 hasToolCalls 始终为 false，
+                                        // 工具调用通过 ObservingToolCallingManager.executeToolCalls 处理）
+                                        var output = chatResponse.getResult().getOutput();
+                                        if (output instanceof org.springframework.ai.chat.messages.AssistantMessage) {
+                                            org.springframework.ai.chat.messages.AssistantMessage assistantMsg = 
+                                                (org.springframework.ai.chat.messages.AssistantMessage) output;
+                                            // 注意：流式模式下 assistantMsg.hasToolCalls() 始终返回 false
+                                            // 这是 Spring AI 的设计，工具调用信息在 executeToolCalls 回调中处理
+                                            if (assistantMsg.hasToolCalls() && !assistantWithToolCallsSaved[0]) {
+                                                // 保存 tool_calls
+                                                assistantMsg.getToolCalls().forEach(tc -> {
+                                                    ChatMessage.ToolCall toolCall = new ChatMessage.ToolCall(
+                                                        tc.id(), tc.type(), tc.name(), tc.arguments());
+                                                    toolCallsList.add(toolCall);
+                                                });
+                                                
+                                                // 保存包含 content 和 tool_calls 的 assistant 消息到 session
+                                                String currentContent = contentBuilder.toString();
+                                                ChatMessage assistantMessage = new ChatMessage(
+                                                        ChatMessage.MessageType.ASSISTANT, 
+                                                        currentContent);
+                                                assistantMessage.setToolCalls(toolCallsList);
+                                                session.addMessage(assistantMessage);
+                                                logger.info("保存 assistant 消息（含 tool_calls），content: {}", 
+                                                        currentContent.length() > 30 ? currentContent.substring(0, 30) + "..." : currentContent);
+                                                
+                                                assistantWithToolCallsSaved[0] = true;
+                                            }
+                                        }
                                     }
                                 },
                                 error -> {
@@ -172,9 +206,24 @@ public class ChatService {
                                     String fullContent = contentBuilder.toString();
                                     logger.info("流式响应完成，总长度: {}", fullContent.length());
                                     
-                                    // 保存消息到会话
+                                    // 保存用户消息
                                     session.addMessage(new ChatMessage(ChatMessage.MessageType.USER, userMessage));
-                                    session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, fullContent));
+                                    
+                                    // 如果已经保存了包含 tool_calls 的 assistant 消息，则只保存最终回答部分
+                                    if (assistantWithToolCallsSaved[0]) {
+                                        // 提取 "回答：" 之后的最终回答
+                                        int answerIndex = fullContent.indexOf(FINAL_ANSWER_PREFIX);
+                                        if (answerIndex >= 0) {
+                                            String finalAnswer = fullContent.substring(answerIndex + FINAL_ANSWER_PREFIX.length()).trim();
+                                            if (!finalAnswer.isEmpty()) {
+                                                session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, finalAnswer));
+                                                logger.info("保存最终回答: {}", finalAnswer.length() > 30 ? finalAnswer.substring(0, 30) + "..." : finalAnswer);
+                                            }
+                                        }
+                                    } else {
+                                        // 没有 tool_calls，正常保存 assistant 消息
+                                        session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, fullContent));
+                                    }
                                     
                                     // 发送最终答案（只发送 "回答：" 之后的部分）
                                     parseAndSendFinalResponse(fullContent, sessionId, responseConsumer);
@@ -250,7 +299,20 @@ public class ChatService {
                     messages.add(new UserMessage(msg.getContent()));
                     break;
                 case ASSISTANT:
-                    messages.add(new AssistantMessage(msg.getContent()));
+                    if (msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
+                        // 创建包含 content 和 tool_calls 的 AssistantMessage
+                        List<org.springframework.ai.chat.messages.AssistantMessage.ToolCall> toolCalls = 
+                            msg.getToolCalls().stream()
+                                .map(tc -> new org.springframework.ai.chat.messages.AssistantMessage.ToolCall(
+                                    tc.getId(), tc.getType(), tc.getFunction().getName(), tc.getFunction().getArguments()))
+                                .collect(Collectors.toList());
+                        messages.add(AssistantMessage.builder()
+                                .content(msg.getContent())
+                                .toolCalls(toolCalls)
+                                .build());
+                    } else {
+                        messages.add(new AssistantMessage(msg.getContent()));
+                    }
                     break;
                 case TOOL_CALL:
                     // 工具调用消息已在 ASSISTANT 消息中体现，不需要单独添加
