@@ -140,7 +140,7 @@
         }
 
         .thinking-section::before {
-            content: "🤔";
+            content: "💭";
             margin-right: 10px;
             font-size: 16px;
         }
@@ -197,6 +197,12 @@
             font-size: 14px;
             margin-bottom: 8px;
             font-weight: 600;
+        }
+
+        .final-answer-header::before {
+            content: "💡";
+            margin-right: 8px;
+            font-size: 16px;
         }
 
         .final-answer-content {
@@ -623,7 +629,7 @@
                 messageDiv.className = 'message message-assistant';
                 messageDiv.innerHTML = `
                     <div class="streaming-section">
-                        <div class="streaming-header">💭 正在回答</div>
+                        <div class="streaming-header">💡 正在回答</div>
                         <div class="streaming-content"></div>
                     </div>
                 `;
@@ -743,7 +749,7 @@
             answerDiv.className = 'message message-assistant';
             answerDiv.innerHTML = `
                 <div class="final-answer-section">
-                    <div class="final-answer-header">💡 回答</div>
+                    <div class="final-answer-header">回答</div>
                     <div class="final-answer-content">${escapeHtml(content)}</div>
                 </div>
             `;
@@ -761,7 +767,7 @@
                 // 更新为最终答案样式
                 streamingSection.className = 'final-answer-section';
                 streamingSection.innerHTML = `
-                    <div class="final-answer-header">💡 回答</div>
+                    <div class="final-answer-header">回答</div>
                     <div class="final-answer-content">${escapeHtml(finalContent)}</div>
                 `;
             }

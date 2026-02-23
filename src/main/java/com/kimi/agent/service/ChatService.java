@@ -91,9 +91,6 @@ public class ChatService {
 
             logger.info("处理用户消息，会话ID: {}, 消息: {}", sessionId, userMessage);
 
-            // 发送初始思考提示
-            responseConsumer.accept(ChatResponse.thinking("正在思考问题...", sessionId));
-
             // 创建工具上下文，包含 SessionId 等内部参数
             ToolContext toolContext = ToolContext.create()
                     .setSessionId(sessionId)

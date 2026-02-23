@@ -27,7 +27,7 @@ import java.util.UUID;
 
 /**
  * WebClient 日志过滤器
- * 用于记录流式模式下的完整 HTTP 请求/响应 JSON 体
+ * 用于记录流式模式下的 HTTP 请求/响应
  * 
  * @author Kimi
  */
@@ -37,7 +37,7 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     private static final Logger log = LoggerFactory.getLogger(WebClientLoggingFilter.class);
     private static final Logger apiLog = LoggerFactory.getLogger("API_LOG");
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-    private static final int MAX_BODY_LENGTH = 1000000; // 最大记录长度
+    private static final int MAX_LOG_LENGTH = 5000; // 日志最大长度
     private static final DefaultDataBufferFactory bufferFactory = new DefaultDataBufferFactory();
 
     @Override
@@ -54,7 +54,7 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
         // 执行请求
         return next.exchange(wrappedRequest)
                 .doOnSuccess(response -> {
-                    // 请求成功，记录请求体（此时应该已经写入完成）
+                    // 请求成功，记录请求体
                     String body = bodyCapture.getBody();
                     logRequest(timestamp, requestId, request, body);
                 })
@@ -63,7 +63,20 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
                     String body = bodyCapture.getBody();
                     logRequest(timestamp, requestId, request, body);
                 })
-                .flatMap(response -> captureResponse(response, timestamp, requestId));
+                .flatMap(response -> {
+                    MediaType contentType = response.headers().contentType().orElse(null);
+                    boolean isStreaming = contentType != null && 
+                            (contentType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM) ||
+                             contentType.toString().contains("stream"));
+                    
+                    if (isStreaming) {
+                        // 流式响应：保持流式特性，使用 doOnNext 记录
+                        return handleStreamingResponse(response, timestamp, requestId);
+                    } else {
+                        // 普通响应：可以完整记录
+                        return handleNormalResponse(response, timestamp, requestId);
+                    }
+                });
     }
 
     /**
@@ -78,11 +91,9 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
                 public Mono<Void> writeWith(Publisher<? extends DataBuffer> body) {
                     return super.writeWith(Flux.from(body)
                             .map(buffer -> {
-                                // 捕获 buffer 内容
                                 byte[] bytes = new byte[buffer.readableByteCount()];
                                 buffer.read(bytes);
                                 capture.addChunk(bytes);
-                                // 返回新的 buffer
                                 return bufferFactory.wrap(bytes);
                             }));
                 }
@@ -109,68 +120,50 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     }
 
     /**
-     * 捕获响应体
+     * 处理流式响应 - 保持流式特性
      */
-    private Mono<ClientResponse> captureResponse(ClientResponse response, String timestamp, String requestId) {
-        MediaType contentType = response.headers().contentType().orElse(null);
-        boolean isStreaming = contentType != null && 
-                (contentType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM) ||
-                 contentType.toString().contains("stream"));
+    private Mono<ClientResponse> handleStreamingResponse(ClientResponse response, String timestamp, String requestId) {
+        // 用于收集响应体的缓冲区
+        StringBuilder responseBuffer = new StringBuilder();
         
-        if (isStreaming) {
-            return captureStreamingResponse(response, timestamp, requestId);
-        } else {
-            return captureNormalResponse(response, timestamp, requestId);
-        }
-    }
-
-    /**
-     * 捕获流式响应
-     */
-    private Mono<ClientResponse> captureStreamingResponse(ClientResponse response, String timestamp, String requestId) {
-        List<BufferHolder> holders = new ArrayList<>();
-        
-        return response.bodyToFlux(DataBuffer.class)
+        // 转换响应体，同时记录日志
+        Flux<DataBuffer> transformedBody = response.bodyToFlux(DataBuffer.class)
                 .map(buffer -> {
+                    // 复制 buffer 内容用于日志
                     byte[] bytes = new byte[buffer.readableByteCount()];
                     buffer.read(bytes);
-                    DataBuffer copy = bufferFactory.wrap(bytes);
-                    DataBufferUtils.release(buffer);
-                    holders.add(new BufferHolder(bytes, copy));
-                    return copy;
-                })
-                .then(Mono.defer(() -> {
-                    StringBuilder bodyBuilder = new StringBuilder();
-                    int totalSize = 0;
-                    for (BufferHolder holder : holders) {
-                        totalSize += holder.bytes.length;
-                        if (bodyBuilder.length() < MAX_BODY_LENGTH) {
-                            bodyBuilder.append(new String(holder.bytes, StandardCharsets.UTF_8));
-                        }
+                    
+                    // 添加到日志缓冲区（限制大小）
+                    if (responseBuffer.length() < MAX_LOG_LENGTH) {
+                        String chunk = new String(bytes, StandardCharsets.UTF_8);
+                        responseBuffer.append(chunk);
                     }
                     
-                    boolean truncated = totalSize > MAX_BODY_LENGTH;
-                    logResponse(timestamp, requestId, response, bodyBuilder.toString(), truncated);
-                    
-                    Flux<DataBuffer> bodyFlux = Flux.fromIterable(holders)
-                            .map(h -> h.buffer);
-                    
-                    return Mono.just(ClientResponse.create(response.statusCode())
-                            .headers(headers -> headers.addAll(response.headers().asHttpHeaders()))
-                            .body(bodyFlux)
-                            .build());
-                }))
-                .onErrorResume(e -> {
-                    log.warn("Failed to capture streaming response: {}", e.getMessage());
+                    // 返回新的 buffer（原 buffer 已被读取）
+                    return (DataBuffer) bufferFactory.wrap(bytes);
+                })
+                .doOnComplete(() -> {
+                    // 流完成后记录响应
+                    String body = responseBuffer.length() > 0 ? responseBuffer.toString() : null;
+                    boolean truncated = responseBuffer.length() >= MAX_LOG_LENGTH;
+                    logResponse(timestamp, requestId, response, body, truncated);
+                })
+                .doOnError(error -> {
+                    log.warn("流式响应处理失败: {}", error.getMessage());
                     logResponse(timestamp, requestId, response, null, false);
-                    return Mono.just(response);
                 });
+        
+        // 重建响应，保持流式特性
+        return Mono.just(ClientResponse.create(response.statusCode())
+                .headers(headers -> headers.addAll(response.headers().asHttpHeaders()))
+                .body(transformedBody)
+                .build());
     }
 
     /**
-     * 捕获普通响应
+     * 处理普通响应 - 可以完整记录
      */
-    private Mono<ClientResponse> captureNormalResponse(ClientResponse response, String timestamp, String requestId) {
+    private Mono<ClientResponse> handleNormalResponse(ClientResponse response, String timestamp, String requestId) {
         return response.bodyToMono(DataBuffer.class)
                 .defaultIfEmpty(bufferFactory.wrap(new byte[0]))
                 .flatMap(buffer -> {
@@ -268,8 +261,8 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
         }
         
         String content = json;
-        if (content.length() > MAX_BODY_LENGTH) {
-            content = content.substring(0, MAX_BODY_LENGTH);
+        if (content.length() > MAX_LOG_LENGTH) {
+            content = content.substring(0, MAX_LOG_LENGTH);
         }
         
         String[] lines = content.split("\n");
@@ -300,19 +293,6 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
             }
             String body = sb.toString();
             return body.isEmpty() ? null : body;
-        }
-    }
-
-    /**
-     * Buffer 持有者
-     */
-    private static class BufferHolder {
-        final byte[] bytes;
-        final DataBuffer buffer;
-        
-        BufferHolder(byte[] bytes, DataBuffer buffer) {
-            this.bytes = bytes;
-            this.buffer = buffer;
         }
     }
 }
