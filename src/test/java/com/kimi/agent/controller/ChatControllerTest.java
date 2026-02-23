@@ -7,27 +7,50 @@ import com.kimi.agent.service.ChatService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
  * 聊天控制器测试类
  * 
+ * 使用 @MockBean 替换 ChatService，避免真实调用模型 API
+ * 
  * @author Kimi
  */
+@SpringBootTest
+@ActiveProfiles("test")
 class ChatControllerTest {
 
+    @Autowired
     private ChatController chatController;
+
+    @MockBean
     private ChatService chatService;
 
     @BeforeEach
     void setUp() {
-        // 使用模拟的 ChatService 进行测试
-        chatService = new MockChatService();
-        chatController = new ChatController(chatService, new ObjectMapper());
+        // 配置 Mock ChatService
+        when(chatService.createNewSession()).thenReturn("mock-session-id-" + System.currentTimeMillis());
+        doNothing().when(chatService).clearSession(anyString());
+        
+        // 配置 processMessage 的默认行为
+        doAnswer(invocation -> {
+            String userMessage = invocation.getArgument(0);
+            String sessionId = invocation.getArgument(1);
+            Consumer<ChatResponse> consumer = invocation.getArgument(2);
+            consumer.accept(ChatResponse.finalAnswer("模拟回复: " + userMessage, sessionId));
+            return null;
+        }).when(chatService).processMessage(anyString(), anyString(), any(Consumer.class));
     }
 
     @Test
@@ -57,6 +80,9 @@ class ChatControllerTest {
         assertNotNull(response.getBody());
         assertEquals(true, response.getBody().get("success"));
         assertEquals("会话已清除", response.getBody().get("message"));
+        
+        // 验证 clearSession 被调用
+        verify(chatService, times(1)).clearSession(sessionId);
     }
 
     @Test
@@ -101,31 +127,5 @@ class ChatControllerTest {
         // 则 - 响应应该包含新的 sessionId
         assertNotNull(response);
         assertNotNull(response.getBody());
-    }
-
-    /**
-     * 模拟的 ChatService 用于测试
-     */
-    private static class MockChatService extends ChatService {
-        public MockChatService() {
-            super(null, null);
-        }
-
-        @Override
-        public void processMessage(String userMessage, String sessionId, 
-                                    java.util.function.Consumer<ChatResponse> responseConsumer) {
-            // 模拟返回最终答案
-            responseConsumer.accept(ChatResponse.finalAnswer("模拟回复: " + userMessage, sessionId));
-        }
-
-        @Override
-        public String createNewSession() {
-            return "mock-session-id-" + System.currentTimeMillis();
-        }
-
-        @Override
-        public void clearSession(String sessionId) {
-            // 模拟清除会话
-        }
     }
 }
