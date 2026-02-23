@@ -40,6 +40,9 @@ public class ChatResponse {
     /** 工具调用结果（当类型为 TOOL_CALL 时） */
     private String toolResult;
     
+    /** 工具调用ID（唯一标识符） */
+    private String toolCallId;
+    
     /** 会话ID */
     private String sessionId;
     
@@ -105,6 +108,14 @@ public class ChatResponse {
         this.toolResult = toolResult;
     }
 
+    public String getToolCallId() {
+        return toolCallId;
+    }
+
+    public void setToolCallId(String toolCallId) {
+        this.toolCallId = toolCallId;
+    }
+
     public String getSessionId() {
         return sessionId;
     }
@@ -163,10 +174,25 @@ public class ChatResponse {
      * @return 响应对象
      */
     public static ChatResponse toolCallResult(String toolName, String toolArguments, String toolResult, String sessionId) {
+        return toolCallResult(toolName, toolArguments, toolResult, sessionId, null);
+    }
+
+    /**
+     * 创建工具调用响应（包含参数、结果和调用ID）
+     * 
+     * @param toolName 工具名称
+     * @param toolArguments 工具参数
+     * @param toolResult 工具结果
+     * @param sessionId 会话ID
+     * @param toolCallId 工具调用ID
+     * @return 响应对象
+     */
+    public static ChatResponse toolCallResult(String toolName, String toolArguments, String toolResult, String sessionId, String toolCallId) {
         ChatResponse response = new ChatResponse(ResponseType.TOOL_CALL, "", sessionId);
         response.setToolName(toolName);
         response.setToolArguments(toolArguments);
         response.setToolResult(toolResult);
+        response.setToolCallId(toolCallId);
         return response;
     }
 
@@ -216,6 +242,7 @@ public class ChatResponse {
                 ", toolName='" + toolName + '\'' +
                 ", toolArguments='" + toolArguments + '\'' +
                 ", toolResult='" + toolResult + '\'' +
+                ", toolCallId='" + toolCallId + '\'' +
                 ", sessionId='" + sessionId + '\'' +
                 ", done=" + done +
                 ", error='" + error + '\'' +

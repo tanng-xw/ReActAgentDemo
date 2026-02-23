@@ -584,7 +584,7 @@
                         appendStreamingContent(response.content);
                         break;
                     case 'TOOL_CALL':
-                        addToolCallMessage(response.toolName, response.toolArguments, response.toolResult);
+                        addToolCallMessage(response.toolName, response.toolArguments, response.toolResult, response.toolCallId);
                         break;
                     case 'FINAL_ANSWER':
                         // 如果已经显示了流式内容，只需更新标题和样式
@@ -678,16 +678,21 @@
         }
 
         // 添加工具调用消息
-        function addToolCallMessage(toolName, toolArguments, toolResult) {
+        function addToolCallMessage(toolName, toolArguments, toolResult, toolCallId) {
             const container = document.getElementById('messagesContainer');
             
             // 标记当前思考框为已完成
             completeCurrentThinking();
             
-            // 查找是否已存在相同工具名称的调用框（用于更新结果）
-            const existingToolDiv = Array.from(container.querySelectorAll('.tool-call-section')).find(
-                div => div.dataset.toolName === toolName && !div.dataset.hasResult
-            );
+            // 使用 toolCallId 查找是否已存在相同的调用框（用于更新结果）
+            // 如果没有 toolCallId（兼容性），则回退到使用 toolName 匹配
+            const existingToolDiv = toolCallId 
+                ? Array.from(container.querySelectorAll('.tool-call-section')).find(
+                    div => div.dataset.toolCallId === toolCallId
+                )
+                : Array.from(container.querySelectorAll('.tool-call-section')).find(
+                    div => div.dataset.toolName === toolName && !div.dataset.hasResult
+                );
             
             if (existingToolDiv && toolResult) {
                 // 更新现有工具框，添加结果
@@ -701,8 +706,11 @@
                 const toolDiv = document.createElement('div');
                 toolDiv.className = 'tool-call-section';
                 toolDiv.dataset.toolName = toolName;
+                if (toolCallId) {
+                    toolDiv.dataset.toolCallId = toolCallId;
+                }
                 
-                let html = `<div class="tool-header">🔧 调用 ${escapeHtml(toolName)}</div>`;
+                let html = `<div class="tool-header">调用 ${escapeHtml(toolName)}</div>`;
                 
                 if (toolArguments) {
                     html += `<div class="tool-arguments"><span class="tool-label">参数:</span> ${escapeHtml(toolArguments)}</div>`;

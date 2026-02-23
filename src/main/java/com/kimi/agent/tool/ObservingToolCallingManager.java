@@ -137,10 +137,10 @@ public class ObservingToolCallingManager implements ToolCallingManager {
                     
                     logger.info("发送工具调用信息到前端: {}, 参数: {}", toolName, arguments);
                     
-                    // 发送包含参数的工具调用响应到前端
+                    // 发送包含参数的工具调用响应到前端（包含toolCallId）
                     if (callback != null) {
                         com.kimi.agent.model.ChatResponse toolResponse = 
-                            com.kimi.agent.model.ChatResponse.toolCallResult(toolName, arguments, null, sessionId);
+                            com.kimi.agent.model.ChatResponse.toolCallResult(toolName, arguments, null, sessionId, toolCallId);
                         callback.accept(toolResponse);
                     }
                 });
@@ -206,10 +206,11 @@ public class ObservingToolCallingManager implements ToolCallingManager {
                     if (toolCallInfo != null) {
                         logger.info("处理工具执行结果: {}, 结果: {}", toolName, responseData);
                         
-                        // 发送结果给前端
+                        // 发送结果给前端（包含参数、结果和toolCallId）
                         if (callback != null) {
                             com.kimi.agent.model.ChatResponse resultResponse = 
-                                com.kimi.agent.model.ChatResponse.toolCallResult(toolName, null, responseData, sessionId);
+                                com.kimi.agent.model.ChatResponse.toolCallResult(
+                                    toolName, toolCallInfo.arguments(), responseData, sessionId, toolCallInfo.id());
                             callback.accept(resultResponse);
                         }
                     }

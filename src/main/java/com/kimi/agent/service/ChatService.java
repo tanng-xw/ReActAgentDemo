@@ -46,6 +46,9 @@ public class ChatService {
 
     /** 最终答案标记前缀 */
     private static final String FINAL_ANSWER_PREFIX = "回答：";
+    
+    /** 最终答案标记前缀（兼容模式，处理"回答"+换行的情况） */
+    private static final String FINAL_ANSWER_PREFIX_ALT = "回答\n";
 
     /** ChatClient 是 Spring AI 推荐的高层抽象 API */
     private final ChatClient chatClient;
@@ -127,26 +130,32 @@ public class ChatService {
                                             String newContent = contentBuilder.toString();
                                             int newAnswerIndex = newContent.indexOf(FINAL_ANSWER_PREFIX);
                                             
-                                            if (newAnswerIndex >= 0) {
-                                                // 已经收到 "回答：" 标记
+                                            // 检查"回答："或"回答\n"标记
+                                            int newAnswerIndexAlt = newContent.indexOf(FINAL_ANSWER_PREFIX_ALT);
+                                            boolean useAltPrefix = newAnswerIndex < 0 && newAnswerIndexAlt >= 0;
+                                            int effectiveNewIndex = useAltPrefix ? newAnswerIndexAlt : newAnswerIndex;
+                                            String effectivePrefix = useAltPrefix ? FINAL_ANSWER_PREFIX_ALT : FINAL_ANSWER_PREFIX;
+                                            
+                                            if (effectiveNewIndex >= 0) {
+                                                // 已经收到 "回答：" 或 "回答\n" 标记
                                                 if (currentAnswerIndex < 0) {
-                                                    // 第一次收到 "回答："，发送之前的思考内容
-                                                    String thinkingContent = newContent.substring(0, newAnswerIndex).trim();
+                                                    // 第一次收到标记，发送之前的思考内容
+                                                    String thinkingContent = newContent.substring(0, effectiveNewIndex).trim();
                                                     if (!thinkingContent.isEmpty() && thinkingContent.length() > lastSentThinkingLength[0]) {
                                                         // 只发送新增的思考内容
                                                         String newThinking = thinkingContent.substring(lastSentThinkingLength[0]);
                                                         responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
                                                         lastSentThinkingLength[0] = thinkingContent.length();
                                                     }
-                                                    // 发送 "回答：" 之后的内容
-                                                    String answerContent = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
+                                                    // 发送标记之后的内容
+                                                    String answerContent = newContent.substring(effectiveNewIndex + effectivePrefix.length());
                                                     if (!answerContent.isEmpty()) {
                                                         responseConsumer.accept(ChatResponse.streaming(answerContent, sessionId));
                                                     }
                                                 } else {
                                                     // 继续发送 answer 内容
                                                     int alreadySent = currentContent.length() - currentAnswerIndex - FINAL_ANSWER_PREFIX.length();
-                                                    String answerPart = newContent.substring(newAnswerIndex + FINAL_ANSWER_PREFIX.length());
+                                                    String answerPart = newContent.substring(effectiveNewIndex + effectivePrefix.length());
                                                     if (alreadySent >= 0 && alreadySent < answerPart.length()) {
                                                         String newChunk = answerPart.substring(alreadySent);
                                                         if (!newChunk.isEmpty()) {
@@ -159,8 +168,25 @@ public class ChatService {
                                                 // 这种情况发生在工具调用前的推理过程
                                                 if (newContent.length() > lastSentThinkingLength[0]) {
                                                     String newThinking = newContent.substring(lastSentThinkingLength[0]);
-                                                    responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
-                                                    lastSentThinkingLength[0] = newContent.length();
+                                                    // 如果 newThinking 以 "回答" 结尾，可能是标记的一部分，暂不发送
+                                                    if (newThinking.endsWith("回答")) {
+                                                        // 等待下一个字符确认是否是标记
+                                                        newThinking = newThinking.substring(0, newThinking.length() - 2);
+                                                        if (!newThinking.isEmpty()) {
+                                                            responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
+                                                            lastSentThinkingLength[0] = newContent.length() - 2;
+                                                        }
+                                                    } else if (newThinking.endsWith("回")) {
+                                                        // 如果 newThinking 以 "回" 结尾，可能是 "回答" 的一部分，暂不发送
+                                                        newThinking = newThinking.substring(0, newThinking.length() - 1);
+                                                        if (!newThinking.isEmpty()) {
+                                                            responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
+                                                            lastSentThinkingLength[0] = newContent.length() - 1;
+                                                        }
+                                                    } else {
+                                                        responseConsumer.accept(ChatResponse.thinking(newThinking, sessionId));
+                                                        lastSentThinkingLength[0] = newContent.length();
+                                                    }
                                                 }
                                             }
                                         }
@@ -221,11 +247,23 @@ public class ChatService {
             return;
         }
 
-        // 检查是否包含最终答案标记
+        // 检查是否包含最终答案标记（"回答：" 或 "回答\n"）
         int finalAnswerIndex = content.indexOf(FINAL_ANSWER_PREFIX);
-        if (finalAnswerIndex >= 0) {
-            // 提取 "回答：" 之后的最终答案
-            String finalAnswer = content.substring(finalAnswerIndex + FINAL_ANSWER_PREFIX.length()).trim();
+        int finalAnswerIndexAlt = content.indexOf(FINAL_ANSWER_PREFIX_ALT);
+        
+        if (finalAnswerIndex >= 0 || finalAnswerIndexAlt >= 0) {
+            // 确定使用哪个标记
+            int effectiveIndex;
+            String effectivePrefix;
+            if (finalAnswerIndex >= 0 && (finalAnswerIndexAlt < 0 || finalAnswerIndex < finalAnswerIndexAlt)) {
+                effectiveIndex = finalAnswerIndex;
+                effectivePrefix = FINAL_ANSWER_PREFIX;
+            } else {
+                effectiveIndex = finalAnswerIndexAlt;
+                effectivePrefix = FINAL_ANSWER_PREFIX_ALT;
+            }
+            // 提取标记之后的最终答案
+            String finalAnswer = content.substring(effectiveIndex + effectivePrefix.length()).trim();
             if (!finalAnswer.isEmpty()) {
                 responseConsumer.accept(ChatResponse.finalAnswer(finalAnswer, sessionId));
             } else {
