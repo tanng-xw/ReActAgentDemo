@@ -107,8 +107,33 @@ public class ChatService {
                                     // 处理每个流式响应块
                                     if (chunk != null && !chunk.isEmpty()) {
                                         contentBuilder.append(chunk);
-                                        // 实时发送流式内容到前端
-                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(chunk, sessionId));
+                                        
+                                        // 检查是否已经接收到 "回答：" 标记
+                                        String currentContent = contentBuilder.toString();
+                                        int answerIndex = currentContent.indexOf(FINAL_ANSWER_PREFIX);
+                                        
+                                        if (answerIndex >= 0) {
+                                            // 只发送 "回答：" 之后的内容
+                                            String answerContent = currentContent.substring(answerIndex + FINAL_ANSWER_PREFIX.length());
+                                            
+                                            // 计算这次新增的 answer 内容
+                                            int prevAnswerIndex = (contentBuilder.length() - chunk.length() - FINAL_ANSWER_PREFIX.length());
+                                            if (prevAnswerIndex < answerIndex) {
+                                                // 这是第一次收到 "回答：" 之后的 chunk
+                                                // 只发送超出之前内容的部分
+                                                responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(answerContent, sessionId));
+                                            } else {
+                                                // 继续发送新增的 chunk（但只发送属于 answer 的部分）
+                                                int alreadySent = contentBuilder.length() - chunk.length() - answerIndex - FINAL_ANSWER_PREFIX.length();
+                                                if (alreadySent >= 0 && alreadySent < answerContent.length()) {
+                                                    String newChunk = answerContent.substring(alreadySent);
+                                                    if (!newChunk.isEmpty()) {
+                                                        responseConsumer.accept(com.kimi.agent.model.ChatResponse.streaming(newChunk, sessionId));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // 如果还没有收到 "回答："，不发送流式内容（思考过程不显示）
                                     }
                                 },
                                 error -> {
@@ -127,7 +152,7 @@ public class ChatService {
                                     session.addMessage(new ChatMessage(ChatMessage.MessageType.USER, userMessage));
                                     session.addMessage(new ChatMessage(ChatMessage.MessageType.ASSISTANT, fullContent));
                                     
-                                    // 发送最终答案
+                                    // 发送最终答案（只发送 "回答：" 之后的部分）
                                     parseAndSendFinalResponse(fullContent, sessionId, responseConsumer);
                                     
                                     // 清除上下文
