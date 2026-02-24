@@ -50,7 +50,7 @@
       }
     },
     "songSlotMatch": {
-      "description": "槽位搜索，通过指定元数据字段匹配曲库歌曲。可用于按歌名、艺术家、专辑、曲风、语种、年代等条件精确查找歌曲",
+      "description": "通过指定元数据字段匹配曲库歌曲。可用于按歌名、艺术家、专辑、曲风、语种、年代等条件精确查找歌曲",
       "parameters": {
         "songName": {
           "description": "歌名列表",
@@ -105,7 +105,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["中文", "英文", "粤语"]
+            "enum": ["中文", "英文", "粤语", "法语"]
           }
         },
         "languageBool": {
