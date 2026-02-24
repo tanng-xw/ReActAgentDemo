@@ -1,0 +1,73 @@
+{
+  "tools": {
+    "getUserLocation": {
+      "description": "查询用户当前所在的城市位置。支持北京、上海、杭州",
+      "parameters": {}
+    },
+    "getWeather": {
+      "description": "查询指定城市的天气信息。支持北京、上海、杭州的天气查询，返回天气状况、温度、湿度和风力",
+      "parameters": {
+        "city": "城市名称，如：北京、上海、杭州"
+      }
+    },
+    "webSearch": {
+      "description": "联网搜索相关知识。支持搜索歌手/乐队/歌曲背景信息和资料。关键词支持最多5个，可增加限定词如'XXX 百科'、'XXX 歌曲'",
+      "parameters": {
+        "keywords": "搜索关键词列表，最多5个。可从多个角度搜索，可增加限定词如'周杰伦 百科'"
+      }
+    },
+    "songSearch": {
+      "description": "搜索曲库歌曲。支持按歌名、艺术家、专辑、曲风、语种、年代等条件搜索",
+      "parameters": {
+        "keywords": "搜索关键词列表"
+      }
+    },
+    "songListSearch": {
+      "description": "搜索曲库歌单。支持按歌单名搜索",
+      "parameters": {
+        "keywords": "搜索关键词列表"
+      }
+    },
+    "songSlotMatch": {
+      "description": "通过指定元数据字段匹配曲库歌曲。可用于按歌名、艺术家、专辑、曲风、语种、年代等条件精确查找歌曲",
+      "parameters": {
+        "songName": "歌名列表",
+        "songNameBool": "歌名关系，取值：or(或，默认值)/and(与)/not(非)",
+        "artist": "艺术家列表",
+        "artistBool": "艺术家关系，取值：or(或，默认值)/and(与，合唱场景)/not(非)",
+        "album": "专辑列表",
+        "albumBool": "专辑关系，取值：or(或，默认值)/not(非)",
+        "style": "曲风列表",
+        "styleBool": "曲风关系，取值：or(或，默认值)/not(非)",
+        "language": "语种列表",
+        "languageBool": "语种关系，取值：or(或，默认值)/not(非)",
+        "years": "年代列表，如：['2003', '1990s']"
+      }
+    },
+    "personalizedRecommend": {
+      "description": "根据用户的个性化喜好推荐歌曲。适用于用户没有明确需求时，或要求根据个人喜好推荐时",
+      "parameters": {}
+    },
+    "topMusicChart": {
+      "description": "搜索曲库榜单。支持新歌榜、热歌榜、美国流行榜、英国流行榜、日本流行榜、韩国流行榜等",
+      "parameters": {
+        "chartType": "榜单类型，如：新歌榜、热歌榜、美国流行榜、韩国流行榜",
+        "date": "榜单月份，格式：202512（代表2025年12月榜单）"
+      }
+    },
+    "playbackControl": {
+      "description": "控制歌曲播放状态，支持播放和暂停操作",
+      "parameters": {
+        "playbackType": "播控类型：play(播放)/pause(暂停)",
+        "contentId": "歌曲ID，播放时必须提供",
+        "time": "延迟时间（秒），可选"
+      }
+    },
+    "userAsset": {
+      "description": "获取用户的音乐资产信息，包括最近播放历史和收藏歌曲",
+      "parameters": {
+        "assetType": "资产类型：play(最近播放)/favorites(收藏歌曲)"
+      }
+    }
+  }
+}
