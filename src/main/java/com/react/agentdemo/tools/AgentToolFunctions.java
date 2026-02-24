@@ -173,6 +173,10 @@ public class AgentToolFunctions {
                     matches = matchesArtist(song, request.artist(), parseRelationType(request.artistBool()));
                 }
                 
+                if (matches && request.artistSex() != null && !request.artistSex().isEmpty()) {
+                    matches = matchesSingleField(song, "artistSex", request.artistSex());
+                }
+                
                 if (matches && request.album() != null && !request.album().isEmpty()) {
                     matches = matchesField(song, "album", request.album(), parseRelationType(request.albumBool()));
                 }
@@ -183,6 +187,10 @@ public class AgentToolFunctions {
                 
                 if (matches && request.language() != null && !request.language().isEmpty()) {
                     matches = matchesArrayField(song, "language", request.language(), parseRelationType(request.languageBool()));
+                }
+                
+                if (matches && request.properties() != null && !request.properties().isEmpty()) {
+                    matches = matchesArrayField(song, "properties", request.properties(), RelationType.or);
                 }
                 
                 if (matches && request.years() != null && !request.years().isEmpty()) {
@@ -203,12 +211,14 @@ public class AgentToolFunctions {
         String songNameBool,
         List<String> artist,
         String artistBool,
+        String artistSex,
         List<String> album,
         String albumBool,
         List<String> style,
         String styleBool,
         List<String> language,
         String languageBool,
+        List<String> properties,
         List<String> years
     ) {}
 
@@ -519,5 +529,13 @@ public class AgentToolFunctions {
         } catch (IllegalArgumentException e) {
             return RelationType.or; // 默认值
         }
+    }
+
+    /**
+     * 单字段匹配（用于 artistSex 等单个字符串值）
+     */
+    private boolean matchesSingleField(JsonNode song, String field, String value) {
+        String fieldValue = song.get(field).asText("").toLowerCase();
+        return fieldValue.contains(value.toLowerCase());
     }
 }
