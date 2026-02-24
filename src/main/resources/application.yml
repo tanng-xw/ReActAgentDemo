@@ -6,7 +6,7 @@ server:
 # 警告：仅在受信任的内网环境使用
 app:
   ssl:
-    insecure: false
+    insecure: true
 
 spring:
   ai:
