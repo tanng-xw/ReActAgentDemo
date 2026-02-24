@@ -3,7 +3,9 @@ package com.react.agentdemo.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,7 +37,7 @@ public class ToolDescriptionProperties {
      */
     public static class ToolDescription {
         private String description;
-        private Map<String, String> parameters = new HashMap<>();
+        private Map<String, ParameterDefinition> parameters = new HashMap<>();
         
         public String getDescription() {
             return description;
@@ -45,19 +47,86 @@ public class ToolDescriptionProperties {
             this.description = description;
         }
         
-        public Map<String, String> getParameters() {
+        public Map<String, ParameterDefinition> getParameters() {
             return parameters;
         }
         
-        public void setParameters(Map<String, String> parameters) {
+        public void setParameters(Map<String, ParameterDefinition> parameters) {
             this.parameters = parameters;
         }
         
         /**
-         * 获取指定参数的描述
+         * 获取指定参数的描述（兼容旧版字符串配置）
          */
         public String getParameterDescription(String paramName) {
-            return parameters.get(paramName);
+            ParameterDefinition def = parameters.get(paramName);
+            return def != null ? def.getDescription() : null;
+        }
+    }
+    
+    /**
+     * 参数定义
+     */
+    public static class ParameterDefinition {
+        private String description;
+        private String type;
+        private List<String> enumValues;
+        private Boolean required;
+        private ItemDefinition items;
+        
+        public String getDescription() {
+            return description;
+        }
+        
+        public void setDescription(String description) {
+            this.description = description;
+        }
+        
+        public String getType() {
+            return type;
+        }
+        
+        public void setType(String type) {
+            this.type = type;
+        }
+        
+        public List<String> getEnum() {
+            return enumValues;
+        }
+        
+        public void setEnum(List<String> enumValues) {
+            this.enumValues = enumValues;
+        }
+        
+        public Boolean getRequired() {
+            return required;
+        }
+        
+        public void setRequired(Boolean required) {
+            this.required = required;
+        }
+        
+        public ItemDefinition getItems() {
+            return items;
+        }
+        
+        public void setItems(ItemDefinition items) {
+            this.items = items;
+        }
+    }
+    
+    /**
+     * 数组项定义
+     */
+    public static class ItemDefinition {
+        private String type;
+        
+        public String getType() {
+            return type;
+        }
+        
+        public void setType(String type) {
+            this.type = type;
         }
     }
 }

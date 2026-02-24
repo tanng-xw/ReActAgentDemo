@@ -6,7 +6,7 @@ import com.react.agentdemo.model.ChatSession;
 import com.react.agentdemo.tool.ObservingToolCallingManager;
 import com.react.agentdemo.tool.ToolContext;
 import com.react.agentdemo.tool.ToolContextHolder;
-import com.react.agentdemo.tools.AgentTools;
+import org.springframework.ai.tool.ToolCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -60,7 +60,7 @@ public class ChatService {
     @Value("classpath:/prompts/system-prompt.st")
     private Resource systemPromptResource;
 
-    public ChatService(ChatClient.Builder chatClientBuilder, AgentTools agentTools) {
+    public ChatService(ChatClient.Builder chatClientBuilder, List<ToolCallback> toolCallbacks) {
         // 创建 ChatMemory 和 Advisor
         // MessageChatMemoryAdvisor 会自动管理对话历史，通过 conversation ID 区分不同会话
         ChatMemory chatMemory = MessageWindowChatMemory.builder()
@@ -70,8 +70,9 @@ public class ChatService {
         
         // ChatClient 会自动处理工具调用循环，通过 ObservingToolCallingManager 捕获中间步骤
         // 使用 MessageChatMemoryAdvisor 自动管理对话历史
+        // 使用从配置动态加载的工具回调
         this.chatClient = chatClientBuilder
-                .defaultTools(agentTools)
+                .defaultToolCallbacks(toolCallbacks)
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
     }

@@ -7,41 +7,118 @@
     "getWeather": {
       "description": "查询指定城市的天气信息。支持北京、上海、杭州的天气查询，返回天气状况、温度、湿度和风力",
       "parameters": {
-        "city": "城市名称，如：北京、上海、杭州"
+        "city": {
+          "description": "城市名称，如：北京、上海、杭州",
+          "type": "string"
+        }
       }
     },
     "webSearch": {
       "description": "联网搜索相关知识。支持搜索歌手/乐队/歌曲背景信息和资料。关键词支持最多5个，可增加限定词如'XXX 百科'、'XXX 歌曲'",
       "parameters": {
-        "keywords": "搜索关键词列表，最多5个。可从多个角度搜索，可增加限定词如'周杰伦 百科'"
+        "keywords": {
+          "description": "搜索关键词列表，最多5个。可从多个角度搜索，可增加限定词如'周杰伦 百科'",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "songSearch": {
       "description": "搜索曲库歌曲。支持按歌名、艺术家、专辑、曲风、语种、年代等条件搜索",
       "parameters": {
-        "keywords": "搜索关键词列表"
+        "keywords": {
+          "description": "搜索关键词列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "songListSearch": {
       "description": "搜索曲库歌单。支持按歌单名搜索",
       "parameters": {
-        "keywords": "搜索关键词列表"
+        "keywords": {
+          "description": "搜索关键词列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "songSlotMatch": {
       "description": "通过指定元数据字段匹配曲库歌曲。可用于按歌名、艺术家、专辑、曲风、语种、年代等条件精确查找歌曲",
       "parameters": {
-        "songName": "歌名列表",
-        "songNameBool": "歌名关系，取值：or(或，默认值)/and(与)/not(非)",
-        "artist": "艺术家列表",
-        "artistBool": "艺术家关系，取值：or(或，默认值)/and(与，合唱场景)/not(非)",
-        "album": "专辑列表",
-        "albumBool": "专辑关系，取值：or(或，默认值)/not(非)",
-        "style": "曲风列表",
-        "styleBool": "曲风关系，取值：or(或，默认值)/not(非)",
-        "language": "语种列表",
-        "languageBool": "语种关系，取值：or(或，默认值)/not(非)",
-        "years": "年代列表，如：['2003', '1990s']"
+        "songName": {
+          "description": "歌名列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "songNameBool": {
+          "description": "歌名关系，取值：or(或，默认值)/and(与)/not(非)",
+          "type": "string",
+          "enum": ["or", "and", "not"]
+        },
+        "artist": {
+          "description": "艺术家列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artistBool": {
+          "description": "艺术家关系，取值：or(或，默认值)/and(与，合唱场景)/not(非)",
+          "type": "string",
+          "enum": ["or", "and", "not"]
+        },
+        "album": {
+          "description": "专辑列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "albumBool": {
+          "description": "专辑关系，取值：or(或，默认值)/not(非)",
+          "type": "string",
+          "enum": ["or", "and", "not"]
+        },
+        "style": {
+          "description": "曲风列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "styleBool": {
+          "description": "曲风关系，取值：or(或，默认值)/not(非)",
+          "type": "string",
+          "enum": ["or", "and", "not"]
+        },
+        "language": {
+          "description": "语种列表",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "languageBool": {
+          "description": "语种关系，取值：or(或，默认值)/not(非)",
+          "type": "string",
+          "enum": ["or", "and", "not"]
+        },
+        "years": {
+          "description": "年代列表，如：['2003', '1990s']",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "personalizedRecommend": {
@@ -51,22 +128,42 @@
     "topMusicChart": {
       "description": "搜索曲库榜单。支持新歌榜、热歌榜、美国流行榜、英国流行榜、日本流行榜、韩国流行榜等",
       "parameters": {
-        "chartType": "榜单类型，如：新歌榜、热歌榜、美国流行榜、韩国流行榜",
-        "date": "榜单月份，格式：202512（代表2025年12月榜单）"
+        "chartType": {
+          "description": "榜单类型，如：新歌榜、热歌榜、美国流行榜、韩国流行榜",
+          "type": "string"
+        },
+        "date": {
+          "description": "榜单月份，格式：202512（代表2025年12月榜单）",
+          "type": "string"
+        }
       }
     },
     "playbackControl": {
       "description": "控制歌曲播放状态，支持播放和暂停操作",
       "parameters": {
-        "playbackType": "播控类型：play(播放)/pause(暂停)",
-        "contentId": "歌曲ID，播放时必须提供",
-        "time": "延迟时间（秒），可选"
+        "playbackType": {
+          "description": "播控类型：play(播放)/pause(暂停)",
+          "type": "string",
+          "enum": ["play", "pause"]
+        },
+        "contentId": {
+          "description": "歌曲ID，播放时必须提供",
+          "type": "string"
+        },
+        "time": {
+          "description": "延迟时间（秒），可选",
+          "type": "integer"
+        }
       }
     },
     "userAsset": {
       "description": "获取用户的音乐资产信息，包括最近播放历史和收藏歌曲",
       "parameters": {
-        "assetType": "资产类型：play(最近播放)/favorites(收藏歌曲)"
+        "assetType": {
+          "description": "资产类型：play(最近播放)/favorites(收藏歌曲)",
+          "type": "string",
+          "enum": ["play", "favorites"]
+        }
       }
     }
   }
