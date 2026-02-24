@@ -66,4 +66,26 @@ public class DynamicToolConfigTest {
         assertTrue(playbackDesc.getParameters().containsKey("playbackType"),
             "应有 playbackType 参数");
     }
+
+    @Test
+    void shouldLoadArrayItemEnumsFromConfig() {
+        // 验证数组项的枚举值可以从配置加载（如 language 的 items.enum）
+        ToolDescriptionProperties.ToolDescription slotMatchDesc = 
+            toolProperties.getToolDescription("songSlotMatch");
+        assertNotNull(slotMatchDesc, "songSlotMatch 应有配置");
+        
+        // 验证 language 参数
+        ToolDescriptionProperties.ParameterDefinition languageParam = 
+            slotMatchDesc.getParameters().get("language");
+        assertNotNull(languageParam, "应有 language 参数");
+        assertEquals("array", languageParam.getType(), "language 应为数组类型");
+        
+        // 验证 items 中的 enum
+        ToolDescriptionProperties.ItemDefinition items = languageParam.getItems();
+        assertNotNull(items, "应有 items 定义");
+        assertNotNull(items.getEnum(), "items 应有 enum 定义");
+        assertTrue(items.getEnum().contains("中文"), "enum 应包含中文");
+        assertTrue(items.getEnum().contains("英文"), "enum 应包含英文");
+        assertTrue(items.getEnum().contains("粤语"), "enum 应包含粤语");
+    }
 }

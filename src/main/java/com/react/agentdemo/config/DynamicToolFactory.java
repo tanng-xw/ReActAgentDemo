@@ -153,6 +153,10 @@ public class DynamicToolFactory {
                     if (paramDef.getItems() != null) {
                         Map<String, Object> items = new HashMap<>();
                         items.put("type", paramDef.getItems().getType());
+                        // 处理 items 中的枚举值
+                        if (paramDef.getItems().getEnum() != null && !paramDef.getItems().getEnum().isEmpty()) {
+                            items.put("enum", paramDef.getItems().getEnum());
+                        }
                         prop.put("items", items);
                     } else {
                         prop.put("items", Map.of("type", "string"));

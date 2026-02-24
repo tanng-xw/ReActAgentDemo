@@ -120,6 +120,7 @@ public class ToolDescriptionProperties {
      */
     public static class ItemDefinition {
         private String type;
+        private List<String> enumValues;
         
         public String getType() {
             return type;
@@ -127,6 +128,14 @@ public class ToolDescriptionProperties {
         
         public void setType(String type) {
             this.type = type;
+        }
+        
+        public List<String> getEnum() {
+            return enumValues;
+        }
+        
+        public void setEnum(List<String> enumValues) {
+            this.enumValues = enumValues;
         }
     }
 }
