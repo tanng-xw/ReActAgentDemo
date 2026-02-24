@@ -2,8 +2,6 @@ package com.react.agentdemo.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.react.agentdemo.model.RelationType;
-import com.react.agentdemo.model.enums.AssetType;
-import com.react.agentdemo.tools.PlaybackType;
 import com.react.agentdemo.service.MockDataService;
 import com.react.agentdemo.tool.ToolContextHolder;
 import org.slf4j.Logger;
@@ -168,23 +166,23 @@ public class AgentToolFunctions {
                 boolean matches = true;
                 
                 if (matches && request.songName() != null && !request.songName().isEmpty()) {
-                    matches = matchesField(song, "name", request.songName(), request.songNameBool());
+                    matches = matchesField(song, "name", request.songName(), parseRelationType(request.songNameBool()));
                 }
                 
                 if (matches && request.artist() != null && !request.artist().isEmpty()) {
-                    matches = matchesArtist(song, request.artist(), request.artistBool());
+                    matches = matchesArtist(song, request.artist(), parseRelationType(request.artistBool()));
                 }
                 
                 if (matches && request.album() != null && !request.album().isEmpty()) {
-                    matches = matchesField(song, "album", request.album(), request.albumBool());
+                    matches = matchesField(song, "album", request.album(), parseRelationType(request.albumBool()));
                 }
                 
                 if (matches && request.style() != null && !request.style().isEmpty()) {
-                    matches = matchesArrayField(song, "style", request.style(), request.styleBool());
+                    matches = matchesArrayField(song, "style", request.style(), parseRelationType(request.styleBool()));
                 }
                 
                 if (matches && request.language() != null && !request.language().isEmpty()) {
-                    matches = matchesArrayField(song, "language", request.language(), request.languageBool());
+                    matches = matchesArrayField(song, "language", request.language(), parseRelationType(request.languageBool()));
                 }
                 
                 if (matches && request.years() != null && !request.years().isEmpty()) {
@@ -202,15 +200,15 @@ public class AgentToolFunctions {
 
     public record SongSlotMatchRequest(
         List<String> songName,
-        RelationType songNameBool,
+        String songNameBool,
         List<String> artist,
-        RelationType artistBool,
+        String artistBool,
         List<String> album,
-        RelationType albumBool,
+        String albumBool,
         List<String> style,
-        RelationType styleBool,
+        String styleBool,
         List<String> language,
-        RelationType languageBool,
+        String languageBool,
         List<String> years
     ) {}
 
@@ -270,8 +268,9 @@ public class AgentToolFunctions {
             }
             
             int delay = request.time() != null ? request.time() : 0;
+            boolean isPlay = "play".equalsIgnoreCase(request.playbackType());
             
-            if (request.playbackType() == PlaybackType.play) {
+            if (isPlay) {
                 if (request.contentId() == null || request.contentId().isEmpty()) {
                     return "{\"result\":\"失败\", \"message\":\"播放歌曲时必须提供 contentId\"}";
                 }
@@ -292,7 +291,7 @@ public class AgentToolFunctions {
     }
 
     public record PlaybackControlRequest(
-        PlaybackType playbackType,
+        String playbackType,
         String contentId,
         Integer time
     ) {}
@@ -308,14 +307,17 @@ public class AgentToolFunctions {
                 return "请指定资产类型：play(最近播放) 或 favorites(收藏歌曲)";
             }
             
-            return switch (request.assetType()) {
-                case play -> formatUserAsset(mockDataService.getRecentPlays(), "最近播放");
-                case favorites -> formatUserAsset(mockDataService.getFavorites(), "收藏歌曲");
-            };
+            if ("play".equalsIgnoreCase(request.assetType())) {
+                return formatUserAsset(mockDataService.getRecentPlays(), "最近播放");
+            } else if ("favorites".equalsIgnoreCase(request.assetType())) {
+                return formatUserAsset(mockDataService.getFavorites(), "收藏歌曲");
+            } else {
+                return "请指定资产类型：play(最近播放) 或 favorites(收藏歌曲)";
+            }
         };
     }
 
-    public record UserAssetRequest(AssetType assetType) {}
+    public record UserAssetRequest(String assetType) {}
 
     // ==================== 辅助方法 ====================
 
@@ -503,5 +505,19 @@ public class AgentToolFunctions {
             }
         }
         return false;
+    }
+
+    /**
+     * 将字符串解析为 RelationType 枚举
+     */
+    private RelationType parseRelationType(String value) {
+        if (value == null) {
+            return RelationType.or;
+        }
+        try {
+            return RelationType.valueOf(value.toLowerCase());
+        } catch (IllegalArgumentException e) {
+            return RelationType.or; // 默认值
+        }
     }
 }
