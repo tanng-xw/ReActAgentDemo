@@ -1,0 +1,72 @@
+{
+  "description": "用户资产数据 Mock",
+  "recentPlays": [
+    {
+      "index": "1",
+      "date": "2025-02-24 10:30:00",
+      "contentId": "SONG001",
+      "name": "晴天",
+      "artist": ["周杰伦"],
+      "artistSex": ["male"],
+      "album": "叶惠美",
+      "style": ["流行"],
+      "years": ["2003"],
+      "language": ["华语"],
+      "tags": ["经典"]
+    },
+    {
+      "index": "2",
+      "date": "2025-02-24 09:15:00",
+      "contentId": "SONG004",
+      "name": "十年",
+      "artist": ["陈奕迅"],
+      "artistSex": ["male"],
+      "album": "黑·白·灰",
+      "style": ["流行"],
+      "years": ["2003"],
+      "language": ["华语"],
+      "tags": ["经典"]
+    },
+    {
+      "index": "3",
+      "date": "2025-02-23 22:45:00",
+      "contentId": "SONG006",
+      "name": "光年之外",
+      "artist": ["邓紫棋"],
+      "artistSex": ["female"],
+      "album": "光年之外",
+      "style": ["流行"],
+      "years": ["2016"],
+      "language": ["华语"],
+      "tags": ["励志"]
+    }
+  ],
+  "favorites": [
+    {
+      "index": "1",
+      "date": "2025-02-20 14:20:00",
+      "contentId": "SONG001",
+      "name": "晴天",
+      "artist": ["周杰伦"],
+      "artistSex": ["male"],
+      "album": "叶惠美",
+      "style": ["流行"],
+      "years": ["2003"],
+      "language": ["华语"],
+      "tags": ["经典"]
+    },
+    {
+      "index": "2",
+      "date": "2025-02-18 16:30:00",
+      "contentId": "SONG002",
+      "name": "稻香",
+      "artist": ["周杰伦"],
+      "artistSex": ["male"],
+      "album": "魔杰座",
+      "style": ["流行"],
+      "years": ["2008"],
+      "language": ["华语"],
+      "tags": ["治愈"]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "description": "榜单数据 Mock",
+  "charts": [
+    {
+      "chartType": "新歌榜",
+      "date": "202502",
+      "songs": [
+        {"index": "1", "contentId": "SONG009", "name": "新歌1", "artist": ["歌手A"], "artistSex": ["male"], "album": "新专辑", "style": ["流行"], "years": ["2025"], "language": ["华语"], "tags": ["新歌"]},
+        {"index": "2", "contentId": "SONG010", "name": "新歌2", "artist": ["歌手B"], "artistSex": ["female"], "album": "热门专辑", "style": ["流行"], "years": ["2025"], "language": ["华语"], "tags": ["热门"]}
+      ]
+    },
+    {
+      "chartType": "热歌榜",
+      "date": "202502",
+      "songs": [
+        {"index": "1", "contentId": "SONG001", "name": "晴天", "artist": ["周杰伦"], "artistSex": ["male"], "album": "叶惠美", "style": ["流行"], "years": ["2003"], "language": ["华语"], "tags": ["经典"]},
+        {"index": "2", "contentId": "SONG007", "name": "演员", "artist": ["薛之谦"], "artistSex": ["male"], "album": "绅士", "style": ["流行"], "years": ["2015"], "language": ["华语"], "tags": ["热门"]}
+      ]
+    },
+    {
+      "chartType": "美国流行榜",
+      "date": "202502",
+      "songs": [
+        {"index": "1", "contentId": "SONG101", "name": "Mock US Hit 1", "artist": ["Artist A"], "artistSex": ["male"], "album": "Album 1", "style": ["Pop"], "years": ["2025"], "language": ["英语"], "tags": ["热门"]},
+        {"index": "2", "contentId": "SONG102", "name": "Mock US Hit 2", "artist": ["Artist B"], "artistSex": ["female"], "album": "Album 2", "style": ["Pop"], "years": ["2025"], "language": ["英语"], "tags": ["热门"]}
+      ]
+    },
+    {
+      "chartType": "韩国流行榜",
+      "date": "202502",
+      "songs": [
+        {"index": "1", "contentId": "SONG201", "name": "Mock K-Pop 1", "artist": ["Group A"], "artistSex": ["group"], "album": "K-Album 1", "style": ["K-Pop"], "years": ["2025"], "language": ["韩语"], "tags": ["热门"]}
+      ]
+    }
+  ]
+}

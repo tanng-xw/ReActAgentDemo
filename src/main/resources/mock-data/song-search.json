@@ -1,0 +1,101 @@
+{
+  "description": "曲库歌曲搜索 Mock 数据",
+  "songs": [
+    {
+      "index": "1",
+      "contentId": "SONG001",
+      "name": "晴天",
+      "artist": ["周杰伦"],
+      "artistSex": ["male"],
+      "album": "叶惠美",
+      "style": ["流行", "R&B"],
+      "years": ["2003"],
+      "language": ["华语"],
+      "tags": ["经典", "青春", "校园"]
+    },
+    {
+      "index": "2",
+      "contentId": "SONG002",
+      "name": "稻香",
+      "artist": ["周杰伦"],
+      "artistSex": ["male"],
+      "album": "魔杰座",
+      "style": ["流行", "民谣"],
+      "years": ["2008"],
+      "language": ["华语"],
+      "tags": ["治愈", "温暖", "励志"]
+    },
+    {
+      "index": "3",
+      "contentId": "SONG003",
+      "name": "七里香",
+      "artist": ["周杰伦"],
+      "artistSex": ["male"],
+      "album": "七里香",
+      "style": ["流行", "中国风"],
+      "years": ["2004"],
+      "language": ["华语"],
+      "tags": ["经典", "抒情", "夏日"]
+    },
+    {
+      "index": "4",
+      "contentId": "SONG004",
+      "name": "十年",
+      "artist": ["陈奕迅"],
+      "artistSex": ["male"],
+      "album": "黑·白·灰",
+      "style": ["流行", "抒情"],
+      "years": ["2003"],
+      "language": ["华语"],
+      "tags": ["经典", "伤感", "KTV必点"]
+    },
+    {
+      "index": "5",
+      "contentId": "SONG005",
+      "name": "浮夸",
+      "artist": ["陈奕迅"],
+      "artistSex": ["male"],
+      "album": "U87",
+      "style": ["流行", "摇滚"],
+      "years": ["2005"],
+      "language": ["粤语"],
+      "tags": ["经典", "高难度", "情绪"]
+    },
+    {
+      "index": "6",
+      "contentId": "SONG006",
+      "name": "光年之外",
+      "artist": ["邓紫棋"],
+      "artistSex": ["female"],
+      "album": "光年之外",
+      "style": ["流行", "电子"],
+      "years": ["2016"],
+      "language": ["华语"],
+      "tags": ["励志", "科幻", "影视歌曲"]
+    },
+    {
+      "index": "7",
+      "contentId": "SONG007",
+      "name": "演员",
+      "artist": ["薛之谦"],
+      "artistSex": ["male"],
+      "album": "绅士",
+      "style": ["流行", "抒情"],
+      "years": ["2015"],
+      "language": ["华语"],
+      "tags": ["伤感", "情歌", "热门"]
+    },
+    {
+      "index": "8",
+      "contentId": "SONG008",
+      "name": "消愁",
+      "artist": ["毛不易"],
+      "artistSex": ["male"],
+      "album": "平凡的一天",
+      "style": ["流行", "民谣"],
+      "years": ["2017"],
+      "language": ["华语"],
+      "tags": ["治愈", "走心", "晚安曲"]
+    }
+  ]
+}
