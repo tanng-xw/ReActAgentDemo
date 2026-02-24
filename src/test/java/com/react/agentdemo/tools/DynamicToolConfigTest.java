@@ -84,8 +84,41 @@ public class DynamicToolConfigTest {
         ToolDescriptionProperties.ItemDefinition items = languageParam.getItems();
         assertNotNull(items, "应有 items 定义");
         assertNotNull(items.getEnum(), "items 应有 enum 定义");
-        assertTrue(items.getEnum().contains("中文"), "enum 应包含中文");
-        assertTrue(items.getEnum().contains("英文"), "enum 应包含英文");
+        assertTrue(items.getEnum().contains("国语"), "enum 应包含国语");
+        assertTrue(items.getEnum().contains("英语"), "enum 应包含英语");
         assertTrue(items.getEnum().contains("粤语"), "enum 应包含粤语");
+    }
+
+    @Test
+    void shouldLoadStyleItemEnumsFromConfig() {
+        // 验证 style 参数的 items.enum
+        ToolDescriptionProperties.ToolDescription slotMatchDesc = 
+            toolProperties.getToolDescription("songSlotMatch");
+        
+        ToolDescriptionProperties.ParameterDefinition styleParam = 
+            slotMatchDesc.getParameters().get("style");
+        assertNotNull(styleParam, "应有 style 参数");
+        
+        ToolDescriptionProperties.ItemDefinition items = styleParam.getItems();
+        assertNotNull(items, "应有 items 定义");
+        assertNotNull(items.getEnum(), "items 应有 enum 定义");
+        assertTrue(items.getEnum().contains("嘻哈"), "enum 应包含嘻哈");
+        assertTrue(items.getEnum().contains("摇滚"), "enum 应包含摇滚");
+        assertTrue(items.getEnum().contains("爵士"), "enum 应包含爵士");
+    }
+
+    @Test
+    void shouldLoadChartTypeEnumsFromConfig() {
+        // 验证 topMusicChart 的 chartType 参数枚举
+        ToolDescriptionProperties.ToolDescription chartDesc = 
+            toolProperties.getToolDescription("topMusicChart");
+        assertNotNull(chartDesc, "topMusicChart 应有配置");
+        
+        ToolDescriptionProperties.ParameterDefinition chartTypeParam = 
+            chartDesc.getParameters().get("chartType");
+        assertNotNull(chartTypeParam, "应有 chartType 参数");
+        assertNotNull(chartTypeParam.getEnum(), "chartType 应有 enum 定义");
+        assertTrue(chartTypeParam.getEnum().contains("热歌流行榜"), "enum 应包含热歌流行榜");
+        assertTrue(chartTypeParam.getEnum().contains("新歌榜"), "enum 应包含新歌榜");
     }
 }
