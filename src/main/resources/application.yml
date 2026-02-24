@@ -1,6 +1,13 @@
 server:
   port: 8081
 
+# 企业内网 SSL 配置
+# 如果内网有 SSL 拦截代理或自签名证书，设置为 true 以禁用 SSL 验证
+# 警告：仅在受信任的内网环境使用
+app:
+  ssl:
+    insecure: false
+
 spring:
   ai:
     openai:
@@ -14,7 +21,7 @@ spring:
 
 logging:
   level:
-    com.kimi.agent: INFO
+    com.react.agentdemo: INFO
     org.springframework.ai: INFO
     com: ERROR
     org: ERROR
