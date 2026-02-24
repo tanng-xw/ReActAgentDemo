@@ -271,19 +271,19 @@ public class AgentTools {
      */
     @Tool(description = "控制音乐播放（播放、暂停）。支持立即执行或延迟执行")
     public String playbackControl(
-            @ToolParam(description = "播控类型：play/pause") String playbackType,
+            @ToolParam(description = "播控类型，取值：play(播放)/pause(暂停)") PlaybackType playbackType,
             @ToolParam(description = "歌曲曲库ID，playbackType为play时必传") String contentId,
             @ToolParam(description = "延迟执行时间（秒），0表示立即执行") Integer time) {
         
         logger.info("PlaybackControl: playbackType={}, contentId={}, time={}", playbackType, contentId, time);
         
-        if (playbackType == null || (!playbackType.equals("play") && !playbackType.equals("pause"))) {
-            return "{\"result\":\"失败\", \"message\":\"无效的播控类型，请使用 play 或 pause\"}";
+        if (playbackType == null) {
+            return "{\"result\":\"失败\", \"message\":\"请指定播控类型：play 或 pause\"}";
         }
         
         int delay = time != null ? time : 0;
         
-        if ("play".equals(playbackType)) {
+        if (playbackType == PlaybackType.play) {
             if (contentId == null || contentId.isEmpty()) {
                 return "{\"result\":\"失败\", \"message\":\"播放歌曲时必须提供 contentId\"}";
             }
