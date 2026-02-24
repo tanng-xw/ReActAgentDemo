@@ -2,6 +2,7 @@ package com.react.agentdemo.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.react.agentdemo.model.RelationType;
+import com.react.agentdemo.model.enums.AssetType;
 import com.react.agentdemo.service.MockDataService;
 import com.react.agentdemo.tool.ToolContextHolder;
 import org.slf4j.Logger;
@@ -309,18 +310,23 @@ public class AgentTools {
      */
     @Tool(description = "获取用户的音乐资产信息，包括最近播放历史和收藏歌曲")
     public String userAsset(
-            @ToolParam(description = "资产类型：play(最近播放)/favorites(收藏歌曲)") String assetType) {
+            @ToolParam(description = "资产类型") AssetType assetType) {
         
         logger.info("UserAsset: assetType={}", assetType);
         
-        if ("play".equals(assetType)) {
-            List<JsonNode> recentPlays = mockDataService.getRecentPlays();
-            return formatUserAsset(recentPlays, "最近播放");
-        } else if ("favorites".equals(assetType)) {
-            List<JsonNode> favorites = mockDataService.getFavorites();
-            return formatUserAsset(favorites, "收藏歌曲");
-        } else {
+        if (assetType == null) {
             return "请指定资产类型：play(最近播放) 或 favorites(收藏歌曲)";
+        }
+        
+        switch (assetType) {
+            case play:
+                List<JsonNode> recentPlays = mockDataService.getRecentPlays();
+                return formatUserAsset(recentPlays, "最近播放");
+            case favorites:
+                List<JsonNode> favorites = mockDataService.getFavorites();
+                return formatUserAsset(favorites, "收藏歌曲");
+            default:
+                return "请指定资产类型：play(最近播放) 或 favorites(收藏歌曲)";
         }
     }
 
