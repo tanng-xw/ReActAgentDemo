@@ -1,6 +1,7 @@
 package com.react.agentdemo.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.react.agentdemo.model.RelationType;
 import com.react.agentdemo.service.MockDataService;
 import com.react.agentdemo.tool.ToolContextHolder;
 import org.slf4j.Logger;
@@ -165,15 +166,15 @@ public class AgentTools {
     @Tool(description = "通过指定元数据字段匹配曲库歌曲。可用于按歌名、艺术家、专辑、曲风、语种、年代等条件精确查找歌曲")
     public String songSlotMatch(
             @ToolParam(description = "歌名列表") List<String> songName,
-            @ToolParam(description = "歌名关系：or/not") Boolean songNameBool,
+            @ToolParam(description = "歌名关系，取值：or(或，默认值)/and(与)/not(非)") RelationType songNameBool,
             @ToolParam(description = "艺术家列表") List<String> artist,
-            @ToolParam(description = "艺术家关系：or/and/not") Boolean artistBool,
+            @ToolParam(description = "艺术家关系，取值：or(或，默认值)/and(与，合唱场景)/not(非)") RelationType artistBool,
             @ToolParam(description = "专辑列表") List<String> album,
-            @ToolParam(description = "专辑关系：or/not") Boolean albumBool,
+            @ToolParam(description = "专辑关系，取值：or(或，默认值)/not(非)") RelationType albumBool,
             @ToolParam(description = "曲风列表") List<String> style,
-            @ToolParam(description = "曲风关系：or/not") Boolean styleBool,
+            @ToolParam(description = "曲风关系，取值：or(或，默认值)/not(非)") RelationType styleBool,
             @ToolParam(description = "语种列表") List<String> language,
-            @ToolParam(description = "语种关系：or/not") Boolean languageBool,
+            @ToolParam(description = "语种关系，取值：or(或，默认值)/not(非)") RelationType languageBool,
             @ToolParam(description = "年代列表，如：['2003', '1990s']") List<String> years) {
         
         logger.info("SongSlotMatch: songName={}, artist={}, album={}, style={}, language={}, years={}",
@@ -401,68 +402,106 @@ public class AgentTools {
     }
 
     // 槽位匹配辅助方法
-    private boolean matchesField(JsonNode song, String field, List<String> values, Boolean isNot) {
+    private boolean matchesField(JsonNode song, String field, List<String> values, RelationType relation) {
         String fieldValue = song.get(field).asText("").toLowerCase();
+        
+        // 默认为 or 关系
+        if (relation == null) {
+            relation = RelationType.or;
+        }
         
         for (String value : values) {
             boolean match = fieldValue.contains(value.toLowerCase());
-            if (Boolean.TRUE.equals(isNot)) {
-                if (match) return false; // not: 任何一个匹配就返回false
-            } else {
-                if (match) return true;  // or: 任何一个匹配就返回true
+            switch (relation) {
+                case not:
+                    if (match) return false; // not: 任何一个匹配就返回false
+                    break;
+                case or:
+                    if (match) return true;  // or: 任何一个匹配就返回true
+                    break;
+                case and:
+                    // and 对于单字段就是必须都包含，这里简化为全部匹配
+                    continue;
             }
         }
         
-        return Boolean.TRUE.equals(isNot); // not时全部不匹配返回true，or时全部不匹配返回false
+        return relation == RelationType.not; // not时全部不匹配返回true，or时全部不匹配返回false
     }
 
-    private boolean matchesArtist(JsonNode song, List<String> artists, Boolean isAnd) {
+    private boolean matchesArtist(JsonNode song, List<String> artists, RelationType relation) {
         JsonNode songArtists = song.get("artist");
         if (songArtists == null || songArtists.size() == 0) return false;
         
-        if (Boolean.TRUE.equals(isAnd)) {
-            // and: 所有查询的艺术家都要在歌曲艺术家中
-            for (String artist : artists) {
-                boolean found = false;
-                for (JsonNode songArtist : songArtists) {
-                    if (songArtist.asText("").toLowerCase().contains(artist.toLowerCase())) {
-                        found = true;
-                        break;
+        // 默认为 or 关系
+        if (relation == null) {
+            relation = RelationType.or;
+        }
+        
+        switch (relation) {
+            case and:
+                // and: 所有查询的艺术家都要在歌曲艺术家中
+                for (String artist : artists) {
+                    boolean found = false;
+                    for (JsonNode songArtist : songArtists) {
+                        if (songArtist.asText("").toLowerCase().contains(artist.toLowerCase())) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) return false;
+                }
+                return true;
+            case not:
+                // not: 所有查询的艺术家都不应在歌曲艺术家中
+                for (String artist : artists) {
+                    for (JsonNode songArtist : songArtists) {
+                        if (songArtist.asText("").toLowerCase().contains(artist.toLowerCase())) {
+                            return false;
+                        }
                     }
                 }
-                if (!found) return false;
-            }
-            return true;
-        } else {
-            // or: 任何一个查询的艺术家匹配即可
-            for (String artist : artists) {
-                for (JsonNode songArtist : songArtists) {
-                    if (songArtist.asText("").toLowerCase().contains(artist.toLowerCase())) {
-                        return true;
+                return true;
+            case or:
+            default:
+                // or: 任何一个查询的艺术家匹配即可
+                for (String artist : artists) {
+                    for (JsonNode songArtist : songArtists) {
+                        if (songArtist.asText("").toLowerCase().contains(artist.toLowerCase())) {
+                            return true;
+                        }
                     }
                 }
-            }
-            return false;
+                return false;
         }
     }
 
-    private boolean matchesArrayField(JsonNode song, String field, List<String> values, Boolean isNot) {
+    private boolean matchesArrayField(JsonNode song, String field, List<String> values, RelationType relation) {
         JsonNode fieldArray = song.get(field);
         if (fieldArray == null || fieldArray.size() == 0) return false;
+        
+        // 默认为 or 关系
+        if (relation == null) {
+            relation = RelationType.or;
+        }
         
         for (String value : values) {
             String lowerValue = value.toLowerCase();
             for (JsonNode item : fieldArray) {
                 boolean match = item.asText("").toLowerCase().contains(lowerValue);
-                if (Boolean.TRUE.equals(isNot)) {
-                    if (match) return false;
-                } else {
-                    if (match) return true;
+                switch (relation) {
+                    case not:
+                        if (match) return false;
+                        break;
+                    case or:
+                        if (match) return true;
+                        break;
+                    case and:
+                        continue;
                 }
             }
         }
         
-        return Boolean.TRUE.equals(isNot);
+        return relation == RelationType.not;
     }
 
     private boolean matchesYears(JsonNode song, List<String> years) {
