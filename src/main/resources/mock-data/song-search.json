@@ -2,7 +2,7 @@
   "description": "曲库歌曲搜索 Mock 数据",
   "songs": [
     {
-      "index": "1",
+      "index": "10001",
       "contentId": "SONG001",
       "name": "晴天",
       "artist": ["周杰伦"],
@@ -14,7 +14,7 @@
       "tags": ["经典", "青春", "校园"]
     },
     {
-      "index": "2",
+      "index": "10002",
       "contentId": "SONG002",
       "name": "稻香",
       "artist": ["周杰伦"],
@@ -26,7 +26,7 @@
       "tags": ["治愈", "温暖", "励志"]
     },
     {
-      "index": "3",
+      "index": "10003",
       "contentId": "SONG003",
       "name": "七里香",
       "artist": ["周杰伦"],
@@ -38,7 +38,7 @@
       "tags": ["经典", "抒情", "夏日"]
     },
     {
-      "index": "4",
+      "index": "10004",
       "contentId": "SONG004",
       "name": "十年",
       "artist": ["陈奕迅"],
@@ -50,7 +50,7 @@
       "tags": ["经典", "伤感", "KTV必点"]
     },
     {
-      "index": "5",
+      "index": "10005",
       "contentId": "SONG005",
       "name": "浮夸",
       "artist": ["陈奕迅"],
@@ -62,7 +62,7 @@
       "tags": ["经典", "高难度", "情绪"]
     },
     {
-      "index": "6",
+      "index": "10006",
       "contentId": "SONG006",
       "name": "光年之外",
       "artist": ["邓紫棋"],
@@ -74,7 +74,7 @@
       "tags": ["励志", "科幻", "影视歌曲"]
     },
     {
-      "index": "7",
+      "index": "10007",
       "contentId": "SONG007",
       "name": "演员",
       "artist": ["薛之谦"],
@@ -86,7 +86,7 @@
       "tags": ["伤感", "情歌", "热门"]
     },
     {
-      "index": "8",
+      "index": "10008",
       "contentId": "SONG008",
       "name": "消愁",
       "artist": ["毛不易"],

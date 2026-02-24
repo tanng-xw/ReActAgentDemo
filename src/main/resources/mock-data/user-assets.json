@@ -2,7 +2,7 @@
   "description": "用户资产数据 Mock",
   "recentPlays": [
     {
-      "index": "1",
+      "index": "40001",
       "date": "2025-02-24 10:30:00",
       "contentId": "SONG001",
       "name": "晴天",
@@ -15,7 +15,7 @@
       "tags": ["经典"]
     },
     {
-      "index": "2",
+      "index": "40002",
       "date": "2025-02-24 09:15:00",
       "contentId": "SONG004",
       "name": "十年",
@@ -28,7 +28,7 @@
       "tags": ["经典"]
     },
     {
-      "index": "3",
+      "index": "40003",
       "date": "2025-02-23 22:45:00",
       "contentId": "SONG006",
       "name": "光年之外",
@@ -43,7 +43,7 @@
   ],
   "favorites": [
     {
-      "index": "1",
+      "index": "40004",
       "date": "2025-02-20 14:20:00",
       "contentId": "SONG001",
       "name": "晴天",
@@ -56,7 +56,7 @@
       "tags": ["经典"]
     },
     {
-      "index": "2",
+      "index": "40005",
       "date": "2025-02-18 16:30:00",
       "contentId": "SONG002",
       "name": "稻香",
