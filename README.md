@@ -60,7 +60,7 @@ restart.bat
 mvn clean package -DskipTests
 
 # 运行
-java -jar target/kimi-agent-1.0.0.jar
+java -jar target/react-agent-demo-1.0.0.jar
 ```
 
 ## 使用说明
@@ -80,7 +80,7 @@ KimiMusicAgent/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/kimi/agent/
-│   │   │   ├── KimiAgentApplication.java    # 应用入口
+│   │   │   ├── ReActAgentDemoApplication.java    # 应用入口
 │   │   │   ├── controller/ChatController.java # 聊天控制器
 │   │   │   ├── service/ChatService.java     # 聊天服务
 │   │   │   ├── service/ToolService.java     # 工具服务

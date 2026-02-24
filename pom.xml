@@ -7,7 +7,7 @@
 
     <!-- 项目基本信息 -->
     <groupId>com.kimi</groupId>
-    <artifactId>kimi-agent</artifactId>
+    <artifactId>react-agent-demo</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Kimi Agent</name>
@@ -83,7 +83,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.kimi.agent.KimiAgentApplication</mainClass>
+                    <mainClass>com.react.agentdemo.ReActAgentDemoApplication</mainClass>
                 </configuration>
             </plugin>
 
