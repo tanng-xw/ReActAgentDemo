@@ -37,7 +37,7 @@ echo 访问地址: http://localhost:8081
 echo.
 
 REM 启动服务（新窗口）
-start "KimiAgent Server" cmd /k "chcp 65001 && set SERVER_PORT=8081 && mvn spring-boot:run -q"
+start "KimiAgent Server" cmd /k "chcp 65001 && set SERVER_PORT=8081 && && set JAVA_OPTS=-Dhttp.proxyHost=proxyhk.huawei.com -Dhttp.proxyPort=8080 -Dhttp.proxyUser=t00811500 -Dhttp.proxyPassword=deep_888 -Dhttps.proxyHost=proxyhk.huawei.com -Dhttps.proxyPort=8080 -Dhttps.proxyUser=t00811500 -Dhttps.proxyPassword=deep_888 && mvn spring-boot:run -q"
 
 echo [*] 等待服务启动...
 timeout /t 6 /nobreak
