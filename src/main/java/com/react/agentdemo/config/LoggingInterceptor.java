@@ -26,6 +26,7 @@ public class LoggingInterceptor implements ClientHttpRequestInterceptor {
     private static final Logger log = LoggerFactory.getLogger(LoggingInterceptor.class);
     private static final Logger apiLog = LoggerFactory.getLogger("API_LOG");
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+    private static final int MAX_LOG_LENGTH = 5000000; // 日志最大长度
 
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
@@ -138,8 +139,8 @@ public class LoggingInterceptor implements ClientHttpRequestInterceptor {
             StringBuilder formatted = new StringBuilder();
             for (String line : lines) {
                 // 截断过长的行
-                if (line.length() > 200) {
-                    line = line.substring(0, 2000000) + "... (truncated)";
+                if (line.length() > MAX_LOG_LENGTH) {
+                    line = line.substring(0, MAX_LOG_LENGTH) + "... (truncated)";
                 }
                 formatted.append("║   ").append(line).append("\n");
             }

@@ -37,7 +37,7 @@ public class WebClientLoggingFilter implements ExchangeFilterFunction {
     private static final Logger log = LoggerFactory.getLogger(WebClientLoggingFilter.class);
     private static final Logger apiLog = LoggerFactory.getLogger("API_LOG");
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-    private static final int MAX_LOG_LENGTH = 5000; // 日志最大长度
+    private static final int MAX_LOG_LENGTH = 5000000; // 日志最大长度
     private static final DefaultDataBufferFactory bufferFactory = new DefaultDataBufferFactory();
 
     @Override
