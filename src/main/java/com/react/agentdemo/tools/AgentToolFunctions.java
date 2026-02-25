@@ -3,7 +3,7 @@ package com.react.agentdemo.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.react.agentdemo.model.RelationType;
 import com.react.agentdemo.service.MockDataService;
-import com.react.agentdemo.tool.ToolContextHolder;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -41,12 +41,8 @@ public class AgentToolFunctions {
      */
     public Function<Void, String> getUserLocation() {
         return (unused) -> {
-            String sessionId = ToolContextHolder.getSessionId();
-            if (sessionId == null) {
-                sessionId = "default";
-                logger.warn("未找到 SessionId，使用默认值");
-            }
-            
+            // 使用默认会话ID，实际会话ID在 ToolCallbackFactory 中通过 ToolContext 传递
+            String sessionId = "default";
             logger.info("获取用户位置，SessionId: {}", sessionId);
             
             Map<String, Object> params = Map.of("sessionId", sessionId);
